@@ -15,6 +15,7 @@ const loadDescriptions: Record<string, string> = {
 
 const BodyHeatMap = () => {
   const { weekStart } = useOutletContext<WeekContextValue>()
+  console.log('BodyHeatMap mounted, weekStart =', weekStart)
   const { data, isLoading } = useMuscleLoad(weekStart)
 
   return (

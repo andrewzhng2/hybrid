@@ -99,20 +99,22 @@ class SnowflakeService:
         week_end = week_start + timedelta(days=6)
 
         with self._cursor() as cursor:
-            week_id, label = self._get_week(cursor, week_start)
+            week_id, label = self._get_week(cursor, week_start)  # still keeps weeks table tidy
 
-            activities = self._fetch_activities(cursor, week_id)
-            stats = self._fetch_week_stats(cursor, week_id)
-            sport_breakdown = self._fetch_sport_breakdown(cursor, week_id)
+            activities = self._fetch_activities_by_date(cursor, week_start, week_end)
+            stats_dict = self._fetch_week_stats_by_date(cursor, week_start, week_end)
+            sport_breakdown = self._fetch_sport_breakdown_by_date(
+                cursor, week_start, week_end
+            )
 
         return WeekSummary(
             week_start_date=week_start,
             week_end_date=week_end,
             label=label,
             stats=WeekStats(
-                total_duration_minutes=stats["total_duration_minutes"],
-                session_count=stats["session_count"],
-                average_rpe=stats["average_rpe"],
+                total_duration_minutes=stats_dict["total_duration_minutes"],
+                session_count=stats_dict["session_count"],
+                average_rpe=stats_dict["average_rpe"],
                 sport_breakdown=sport_breakdown,
             ),
             activities=activities,
@@ -124,23 +126,25 @@ class SnowflakeService:
         week_end = week_start + timedelta(days=6)
 
         with self._cursor() as cursor:
-            week_id, _ = self._get_week(cursor, week_start)
-
             load_sql = """
-                select
+                SELECT
                     d.muscle_id,
-                    m.name as muscle_name,
-                    sum(d.load_score) as load_score
-                from daily_muscle_loads d
-                join muscle_groups m on m.muscle_id = d.muscle_id
-                where d.user_id = %(user_id)s
-                  and d.week_id = %(week_id)s
-                group by d.muscle_id, m.name
-                order by load_score desc
+                    m.name AS muscle_name,
+                    SUM(d.load_score) AS load_score
+                FROM daily_muscle_loads d
+                JOIN muscle_groups m ON m.muscle_id = d.muscle_id
+                WHERE d.user_id = %(user_id)s
+                AND d.date BETWEEN %(week_start)s AND %(week_end)s
+                GROUP BY d.muscle_id, m.name
+                ORDER BY load_score DESC
             """
             cursor.execute(
                 load_sql,
-                {"user_id": self._default_user_id, "week_id": week_id},
+                {
+                    "user_id": self._default_user_id,
+                    "week_start": week_start,
+                    "week_end": week_end,
+                },
             )
             rows = cursor.fetchall() or []
 
@@ -276,7 +280,7 @@ class SnowflakeService:
             {"week_id": week_id, "week_start_date": week_start},
         )
 
-    def _fetch_activities(self, cursor: DictCursor, week_id: int) -> List[Activity]:
+    def _fetch_activities_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> List[Activity]:
         cursor.execute(
             """
             select
@@ -289,10 +293,15 @@ class SnowflakeService:
                 intensity_rpe,
                 notes
             from activity_sessions
-            where week_id = %(week_id)s
+            where user_id = %(user_id)s
+              and session_date between %(week_start)s and %(week_end)s
             order by session_date asc, activity_id asc
             """,
-            {"week_id": week_id},
+            {
+                "user_id": self._default_user_id,
+                "week_start": week_start,
+                "week_end": week_end,
+            },
         )
         rows = cursor.fetchall() or []
         activities: List[Activity] = []
@@ -304,7 +313,7 @@ class SnowflakeService:
                     week_id=int(normalized["week_id"]),
                     sport_id=int(normalized["sport_id"]),
                     date=normalized["session_date"],
-                category=normalized.get("category"),
+                    category=normalized.get("category"),
                     duration_minutes=int(normalized["duration_minutes"]),
                     intensity_rpe=int(normalized["intensity_rpe"]),
                     notes=normalized.get("notes"),
@@ -312,7 +321,7 @@ class SnowflakeService:
             )
         return activities
 
-    def _fetch_week_stats(self, cursor: DictCursor, week_id: int) -> Dict[str, float]:
+    def _fetch_week_stats_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> Dict[str, float]:
         cursor.execute(
             """
             select
@@ -320,9 +329,14 @@ class SnowflakeService:
                 count(*) as session_count,
                 coalesce(avg(intensity_rpe), 0) as average_rpe
             from activity_sessions
-            where week_id = %(week_id)s
+            where user_id = %(user_id)s
+              and session_date between %(week_start)s and %(week_end)s
             """,
-            {"week_id": week_id},
+            {
+                "user_id": self._default_user_id,
+                "week_start": week_start,
+                "week_end": week_end,
+            },
         )
         row = cursor.fetchone() or {}
         normalized = self._normalize_row(row)
@@ -332,7 +346,7 @@ class SnowflakeService:
             "average_rpe": float(normalized.get("average_rpe", 0) or 0),
         }
 
-    def _fetch_sport_breakdown(self, cursor: DictCursor, week_id: int) -> List[SportBreakdown]:
+    def _fetch_sport_breakdown_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> List[SportBreakdown]:
         cursor.execute(
             """
             select
@@ -342,11 +356,16 @@ class SnowflakeService:
                 count(a.activity_id) as session_count
             from activity_sessions a
             join sports s on s.sport_id = a.sport_id
-            where week_id = %(week_id)s
+            where a.user_id = %(user_id)s
+              and a.session_date between %(week_start)s and %(week_end)s
             group by s.sport_id, s.name
             order by total_duration_minutes desc
             """,
-            {"week_id": week_id},
+            {
+                "user_id": self._default_user_id,
+                "week_start": week_start,
+                "week_end": week_end,
+            },
         )
         rows = cursor.fetchall() or []
         breakdown: List[SportBreakdown] = []
