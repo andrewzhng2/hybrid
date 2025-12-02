@@ -10,6 +10,7 @@ class ActivityBase(BaseModel):
 
     sport_id: int = Field(..., description="Reference to the sport performed.")
     date: date
+    category: Optional[str] = None
     duration_minutes: int = Field(..., gt=0)
     intensity_rpe: int = Field(..., ge=1, le=10)
     notes: Optional[str] = None

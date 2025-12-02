@@ -40,6 +40,7 @@ class SnowflakeService:
                     week_id,
                     session_date,
                     sport_id,
+                    category,
                     duration_minutes,
                     intensity_rpe,
                     notes
@@ -49,6 +50,7 @@ class SnowflakeService:
                     %(week_id)s,
                     %(session_date)s,
                     %(sport_id)s,
+                    %(category)s,
                     %(duration_minutes)s,
                     %(intensity_rpe)s,
                     %(notes)s
@@ -57,6 +59,7 @@ class SnowflakeService:
                           week_id,
                           session_date,
                           sport_id,
+                          category,
                           duration_minutes,
                           intensity_rpe,
                           notes
@@ -68,6 +71,7 @@ class SnowflakeService:
                     "week_id": week_id,
                     "session_date": payload.date,
                     "sport_id": payload.sport_id,
+                    "category": payload.category,
                     "duration_minutes": payload.duration_minutes,
                     "intensity_rpe": payload.intensity_rpe,
                     "notes": payload.notes,
@@ -83,6 +87,7 @@ class SnowflakeService:
                 week_id=int(normalized["week_id"]),
                 sport_id=int(normalized["sport_id"]),
                 date=normalized["session_date"],
+                category=normalized.get("category"),
                 duration_minutes=int(normalized["duration_minutes"]),
                 intensity_rpe=int(normalized["intensity_rpe"]),
                 notes=normalized.get("notes"),
@@ -182,6 +187,10 @@ class SnowflakeService:
 
     def _upsert_week(self, cursor: DictCursor, week_start: date) -> tuple[int, str | None]:
         """Ensure week row exists for the given date and return (id, label)."""
+        ensured = self._ensure_week_entry(cursor, week_start)
+        if ensured:
+            return ensured
+
         merge_sql = """
             merge into weeks as target
             using (select %(user_id)s as user_id, %(week_start_date)s as week_start_date) as source
@@ -197,22 +206,75 @@ class SnowflakeService:
 
     def _get_week(self, cursor: DictCursor, week_start: date) -> tuple[int, str | None]:
         """Return (week_id, label) if the week exists."""
+        ensured = self._ensure_week_entry(cursor, week_start)
+        if not ensured:
+            raise SnowflakeServiceError(
+                f"No training week found for {week_start.isoformat()}."
+            )
+        return ensured
+
+    def _ensure_week_entry(self, cursor: DictCursor, week_start: date) -> tuple[int, str | None] | None:
+        """Return an existing week row, re-anchoring legacy entries to Monday when needed."""
+        row = self._select_week_row(cursor, week_start)
+        if row:
+            normalized = self._normalize_row(row)
+            return int(normalized["week_id"]), normalized.get("label")
+
+        legacy_row = self._select_week_in_window(cursor, week_start)
+        if not legacy_row:
+            return None
+
+        normalized = self._normalize_row(legacy_row)
+        stored_start: date = normalized["week_start_date"]
+        if stored_start != week_start:
+            self._reanchor_week(cursor, int(normalized["week_id"]), week_start)
+            row = self._select_week_row(cursor, week_start)
+            if row:
+                normalized = self._normalize_row(row)
+        return int(normalized["week_id"]), normalized.get("label")
+
+    def _select_week_row(self, cursor: DictCursor, week_start: date) -> Dict[str, object] | None:
         cursor.execute(
             """
-            select week_id, label
+            select week_id, week_start_date, label
             from weeks
             where user_id = %(user_id)s
               and week_start_date = %(week_start_date)s
             """,
             {"user_id": self._default_user_id, "week_start_date": week_start},
         )
-        row = cursor.fetchone()
-        if not row:
-            raise SnowflakeServiceError(
-                f"No training week found for {week_start.isoformat()}."
-            )
-        normalized = self._normalize_row(row)
-        return int(normalized["week_id"]), normalized.get("label")
+        return cursor.fetchone()
+
+    def _select_week_in_window(self, cursor: DictCursor, week_start: date) -> Dict[str, object] | None:
+        """Locate a legacy week whose start date falls within the same 7-day window."""
+        cursor.execute(
+            """
+            select week_id, week_start_date, label
+            from weeks
+            where user_id = %(user_id)s
+              and week_start_date between %(window_start)s and %(window_end)s
+            order by week_start_date desc
+            limit 1
+            """,
+            {
+                "user_id": self._default_user_id,
+                "window_start": week_start - timedelta(days=6),
+                "window_end": week_start,
+            },
+        )
+        return cursor.fetchone()
+
+    @staticmethod
+    def _reanchor_week(cursor: DictCursor, week_id: int, week_start: date) -> None:
+        """Update an existing week so that its anchor date is shifted to Monday."""
+        cursor.execute(
+            """
+            update weeks
+            set week_start_date = %(week_start_date)s
+            where week_id = %(week_id)s
+            """,
+            {"week_id": week_id, "week_start_date": week_start},
+        )
 
     def _fetch_activities(self, cursor: DictCursor, week_id: int) -> List[Activity]:
         cursor.execute(
@@ -222,6 +284,7 @@ class SnowflakeService:
                 week_id,
                 session_date,
                 sport_id,
+                category,
                 duration_minutes,
                 intensity_rpe,
                 notes
@@ -241,6 +304,7 @@ class SnowflakeService:
                     week_id=int(normalized["week_id"]),
                     sport_id=int(normalized["sport_id"]),
                     date=normalized["session_date"],
+                category=normalized.get("category"),
                     duration_minutes=int(normalized["duration_minutes"]),
                     intensity_rpe=int(normalized["intensity_rpe"]),
                     notes=normalized.get("notes"),
@@ -300,9 +364,8 @@ class SnowflakeService:
 
     @staticmethod
     def _start_of_week(target: date) -> date:
-        """Return the Sunday of the week that contains the target date."""
-        days_since_sunday = (target.weekday() + 1) % 7
-        return target - timedelta(days=days_since_sunday)
+        """Return the Monday of the week that contains the target date."""
+        return target - timedelta(days=target.weekday())
 
     @staticmethod
     def _normalize_row(row: Dict[str, object] | None) -> Dict[str, object]:

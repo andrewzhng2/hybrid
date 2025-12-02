@@ -9,8 +9,8 @@ import { formatWeekRange } from '@/utils/date'
 const loadDescriptions: Record<string, string> = {
   white: 'Fresh',
   yellow: 'Activated',
-  orange: 'Working hard',
-  red: 'Overreached',
+  orange: 'Working HARD',
+  red: 'OVERWORKED',
 }
 
 const BodyHeatMap = () => {

@@ -1,8 +1,8 @@
 # Hybrid
 
-Hybrid is a personal training dashboard that lets multi-sport athletes log weekly sessions, see which muscles each sport is hitting, and spot imbalances through simple visual analytics. The plan resets every Sunday, aggregates the history in Snowflake, and powers three focused views:
+Hybrid is a personal training dashboard that lets multi-sport athletes log weekly sessions, see which muscles each sport is hitting, and spot imbalances through simple visual analytics. The plan resets every Monday, aggregates the history in Snowflake, and powers three focused views:
 
-1. **Week Planner** – Sun–Sat grid for logging sport, duration, and RPE.
+1. **Week Planner** – Mon–Sun grid for logging sport, duration, and RPE.
 2. **Analytics** – Totals, RPE averages, and sport distribution per week.
 3. **Body Map** – A heat map that shows how hard each muscle group worked.
 

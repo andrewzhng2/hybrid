@@ -13,9 +13,12 @@ const sampleSports = [
   { id: 3, label: 'Basketball' },
 ]
 
+const categoryOptions = ['All-Around', 'Cardio', 'Strength', 'Mobility', 'Form']
+
 const defaultFormState = (weekStart: string) => ({
   date: weekStart,
   sport_id: '',
+  category: '',
   duration_minutes: '',
   intensity_rpe: 5,
   notes: '',
@@ -53,6 +56,7 @@ const WeeklyGrid = () => {
       {
         sport_id: Number(formState.sport_id),
         date: formState.date,
+        category: formState.category.trim() ? formState.category.trim() : undefined,
         duration_minutes: Number(formState.duration_minutes),
         intensity_rpe: Number(formState.intensity_rpe),
         notes: formState.notes || undefined,
@@ -98,7 +102,10 @@ const WeeklyGrid = () => {
               ) : activitiesByDate[day]?.length ? (
                 activitiesByDate[day].map((activity) => (
                   <div key={activity.activity_id} className={`activity-chip intensity-${activity.intensity_rpe}`}>
-                    <p className="activity-title">Sport #{activity.sport_id}</p>
+                    <p className="activity-title">
+                      Sport #{activity.sport_id}
+                      {activity.category ? ` · ${activity.category}` : ''}
+                    </p>
                     <p className="activity-meta">
                       {activity.duration_minutes} min · RPE {activity.intensity_rpe}
                     </p>
@@ -136,28 +143,33 @@ const WeeklyGrid = () => {
           </label>
           <label>
             Sport
-            <div className="sport-inputs">
-              <select
-                className="rb-select"
-                value={formState.sport_id}
-                onChange={(event) => setFormState((prev) => ({ ...prev, sport_id: event.target.value }))}
-              >
-                <option value="">Select a preset</option>
-                {sampleSports.map((sport) => (
-                  <option key={sport.id} value={sport.id}>
-                    #{sport.id} · {sport.label}
-                  </option>
-                ))}
-              </select>
-              <Input
-                type="number"
-                min={1}
-                placeholder="Or type sport ID"
-                value={formState.sport_id}
-                onChange={(event) => setFormState((prev) => ({ ...prev, sport_id: event.target.value }))}
-                required
-              />
-            </div>
+            <select
+              className="rb-select"
+              value={formState.sport_id}
+              onChange={(event) => setFormState((prev) => ({ ...prev, sport_id: event.target.value }))}
+            >
+              <option value="">Select a sport</option>
+              {sampleSports.map((sport) => (
+                <option key={sport.id} value={sport.id}>
+                  #{sport.id} · {sport.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Category
+            <select
+              className="rb-select"
+              value={formState.category}
+              onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
+            >
+              <option value="">Optional</option>
+              {categoryOptions.map((category) => (
+                <option key={category} value={category}>
+                  {category}
+                </option>
+              ))}
+            </select>
           </label>
           <label>
             Duration (minutes)

@@ -1,10 +1,10 @@
 const DAY_IN_MS = 1000 * 60 * 60 * 24
 
 export const startOfWeek = (target: Date): Date => {
-  const daysSinceSunday = (target.getDay() + 7 - 0) % 7
+  const daysSinceMonday = (target.getDay() + 6) % 7
   const start = new Date(target)
   start.setHours(0, 0, 0, 0)
-  start.setTime(start.getTime() - daysSinceSunday * DAY_IN_MS)
+  start.setTime(start.getTime() - daysSinceMonday * DAY_IN_MS)
   return start
 }
 

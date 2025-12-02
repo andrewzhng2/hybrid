@@ -40,7 +40,7 @@ def read_week(
     week_start_date: date,
     service: SnowflakeService = Depends(get_snowflake_service),
 ) -> WeekSummary:
-    """Return all activities plus stats for a week (Sunday-start)."""
+    """Return all activities plus stats for a week (Monday-start)."""
     try:
         return service.get_week_summary(week_start_date)
     except SnowflakeServiceError as exc:  # pragma: no cover

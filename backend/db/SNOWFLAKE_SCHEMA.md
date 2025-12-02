@@ -20,7 +20,7 @@ Hybrid treats Snowflake as the primary source of truth for every entity: user pr
 | --- | --- | --- |
 | `week_id` | NUMBER | Primary key, identity/autoincrement. |
 | `user_id` | NUMBER | FK → `users.user_id`. |
-| `week_start_date` | DATE | Always the Sunday that anchors the week. |
+| `week_start_date` | DATE | Always the Monday that anchors the week. |
 | `label` | VARCHAR | Optional tags like “Race Week”, “Deload”, etc. |
 
 ### `sports`
@@ -55,6 +55,7 @@ Mapping table that powers every derived muscle metric.
 | `week_id` | NUMBER | FK → `weeks`. |
 | `session_date` | DATE | Exact calendar day. |
 | `sport_id` | NUMBER | FK → `sports`. |
+| `category` | VARCHAR | Optional override if different from `sports.category`. |
 | `duration_minutes` | NUMBER | Positive integer. |
 | `intensity_rpe` | NUMBER | 1–10 (RPE scale). |
 | `notes` | VARCHAR | Optional free text. |

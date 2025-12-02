@@ -3,6 +3,7 @@ export interface Activity {
   week_id: number
   sport_id: number
   date: string
+  category?: string | null
   duration_minutes: number
   intensity_rpe: number
   notes?: string | null
@@ -11,6 +12,7 @@ export interface Activity {
 export interface ActivityCreate {
   sport_id: number
   date: string
+  category?: string
   duration_minutes: number
   intensity_rpe: number
   notes?: string
