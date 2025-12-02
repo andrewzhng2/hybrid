@@ -55,18 +55,8 @@ class SnowflakeService:
                     %(intensity_rpe)s,
                     %(notes)s
                 )
-                returning activity_id,
-                          week_id,
-                          session_date,
-                          sport_id,
-                          category,
-                          duration_minutes,
-                          intensity_rpe,
-                          notes
             """
-            cursor.execute(
-                insert_sql,
-                {
+            activity_params = {
                     "user_id": self._default_user_id,
                     "week_id": week_id,
                     "session_date": payload.date,
@@ -75,8 +65,32 @@ class SnowflakeService:
                     "duration_minutes": payload.duration_minutes,
                     "intensity_rpe": payload.intensity_rpe,
                     "notes": payload.notes,
-                },
-            )
+            }
+            cursor.execute(insert_sql, activity_params)
+
+            fetch_sql = """
+                select
+                    activity_id,
+                    week_id,
+                    session_date,
+                    sport_id,
+                    category,
+                    duration_minutes,
+                    intensity_rpe,
+                    notes
+                from activity_sessions
+                where user_id = %(user_id)s
+                  and week_id = %(week_id)s
+                  and session_date = %(session_date)s
+                  and sport_id = %(sport_id)s
+                  and duration_minutes = %(duration_minutes)s
+                  and intensity_rpe = %(intensity_rpe)s
+                  and coalesce(category, '__NULL__') = coalesce(%(category)s, '__NULL__')
+                  and coalesce(notes, '__NULL__') = coalesce(%(notes)s, '__NULL__')
+                order by activity_id desc
+                limit 1
+            """
+            cursor.execute(fetch_sql, activity_params)
             row = cursor.fetchone()
             if not row:
                 raise SnowflakeServiceError("Unable to create activity session.")
