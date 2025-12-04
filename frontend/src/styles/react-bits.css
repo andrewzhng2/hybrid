@@ -414,22 +414,155 @@ body {
 }
 
 .heatmap-wrapper {
-  display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 1.5rem;
+  border: 1px solid var(--rb-border);
+  border-radius: 1.5rem;
+  padding: 1.5rem;
+  background: radial-gradient(
+      circle at 20% 0%,
+      rgba(255, 255, 255, 0.08),
+      transparent 55%
+    ),
+    rgba(255, 255, 255, 0.02);
+  margin-bottom: 1.5rem;
 }
 
-.heat-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+.body-heat-map {
+  width: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 1rem;
 }
 
-.heat-cell {
+.figure-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 2rem;
+  justify-items: center;
+  width: 100%;
+  position: relative;
+}
+
+.figure {
+  position: relative;
+  width: min(320px, 100%);
+  aspect-ratio: 180 / 520;
+}
+
+.figure-svg {
+  width: 100%;
+  height: 100%;
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.region-layer {
+  position: absolute;
+  inset: 0;
+}
+
+.muscle-region {
+  position: absolute;
+  border-radius: 1.35rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid transparent;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  text-align: center;
+  font-size: 0.7rem;
+  line-height: 1.1;
+  color: var(--rb-text);
+  backdrop-filter: blur(6px);
+  box-shadow: 0 8px 18px rgba(7, 10, 20, 0.22);
+}
+
+.muscle-region .region-label {
+  font-weight: 600;
+}
+
+.region-score {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.region-score--empty {
+  opacity: 0.4;
+}
+
+.muscle-region.heat-white {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
+.muscle-region.heat-yellow {
+  background: linear-gradient(180deg, rgba(255, 198, 89, 0.75), rgba(255, 153, 0, 0.8));
+  border-color: rgba(255, 198, 89, 0.6);
+  color: #231306;
+}
+
+.muscle-region.heat-orange {
+  background: linear-gradient(180deg, rgba(255, 132, 86, 0.82), rgba(255, 94, 58, 0.88));
+  border-color: rgba(255, 94, 58, 0.7);
+  color: #260b03;
+}
+
+.muscle-region.heat-red {
+  background: linear-gradient(180deg, rgba(255, 138, 174, 0.84), rgba(255, 71, 126, 0.9));
+  border-color: rgba(255, 71, 126, 0.7);
+  color: #2a0010;
+}
+
+.fallback-region {
+  position: absolute;
+  left: 50%;
+  bottom: 6%;
+  transform: translate(-50%, 0);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.65rem 1rem;
+  border-radius: 1.1rem;
+  border: 1px dashed rgba(255, 255, 255, 0.35);
+  background: rgba(8, 10, 23, 0.88);
+  box-shadow: 0 10px 24px rgba(3, 5, 15, 0.65);
+  min-width: 210px;
+  max-width: 260px;
+  text-align: center;
+}
+
+.fallback-grid {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.fallback-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.65rem;
+  line-height: 1;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+
+.fallback-pill .fallback-score {
+  font-weight: 600;
+}
+
+.heat-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  border: 1px solid var(--rb-border);
   border-radius: 1rem;
   padding: 1rem;
-  border: 1px solid var(--rb-border);
-  text-align: center;
 }
 
 .heat-white {
@@ -464,15 +597,6 @@ body {
   color: var(--rb-muted);
 }
 
-.heat-legend {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  border: 1px solid var(--rb-border);
-  border-radius: 1rem;
-  padding: 1rem;
-}
-
 .legend-item {
   display: flex;
   gap: 0.75rem;
@@ -499,16 +623,20 @@ body {
 }
 
 @media (max-width: 900px) {
-  .heatmap-wrapper {
-    grid-template-columns: 1fr;
-  }
-
   .app-shell {
     padding: 1.25rem;
   }
 
   .sport-row {
     grid-template-columns: 1fr;
+  }
+
+  .figure-grid {
+    gap: 1.5rem;
+  }
+
+  .fallback-region {
+    bottom: 3%;
   }
 }
 
@@ -521,6 +649,19 @@ body {
     flex-wrap: wrap;
     overflow-x: visible;
     padding-left: 0;
+  }
+
+  .figure-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .fallback-region {
+    position: static;
+    transform: none;
+    width: min(320px, 100%);
+    max-width: 100%;
+    margin: 0.5rem auto 0;
+    box-shadow: 0 6px 18px rgba(3, 5, 15, 0.45);
   }
 }
 
