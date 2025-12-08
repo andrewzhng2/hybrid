@@ -1,19 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useOutletContext } from 'react-router-dom'
 
-import { useCreateActivity, useWeekSummary } from '@/api/hooks'
+import { useCreateActivity, useWeekSummary, useSports } from '@/api/hooks'
 import type { Activity } from '@/api/types'
 import { Button, Card, Input, Textarea } from '@/components/ui'
 import type { WeekContextValue } from '@/types/week'
 import { formatDisplayDate, getWeekDays } from '@/utils/date'
-
-const sampleSports = [
-  { id: 1, label: 'Running' },
-  { id: 2, label: 'Climbing' },
-  { id: 3, label: 'Basketball' },
-]
-
-const categoryOptions = ['All-Around', 'Cardio', 'Strength', 'Mobility', 'Form']
 
 const defaultFormState = (weekStart: string) => ({
   date: weekStart,
@@ -29,6 +21,7 @@ const WeeklyGrid = () => {
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart])
 
   const { data, isLoading } = useWeekSummary(weekStart)
+  const { data: sports, isLoading: sportsLoading } = useSports()
   const createActivity = useCreateActivity(weekStart)
 
   const [formState, setFormState] = useState(() => defaultFormState(weekStart))
@@ -66,6 +59,16 @@ const WeeklyGrid = () => {
       },
     )
   }
+
+  const selectedSport = useMemo(() => {
+    if (!sports || !formState.sport_id) {
+      return undefined
+    }
+    const targetId = Number(formState.sport_id)
+    return sports.find((sport) => sport.sport_id === targetId)
+  }, [sports, formState.sport_id])
+
+  const focusOptions = selectedSport?.focuses ?? []
 
   return (
     <section className="page-stack">
@@ -146,12 +149,19 @@ const WeeklyGrid = () => {
             <select
               className="rb-select"
               value={formState.sport_id}
-              onChange={(event) => setFormState((prev) => ({ ...prev, sport_id: event.target.value }))}
+              onChange={(event) =>
+                setFormState((prev) => ({
+                  ...prev,
+                  sport_id: event.target.value,
+                  category: '',
+                }))
+              }
+              disabled={sportsLoading}
             >
-              <option value="">Select a sport</option>
-              {sampleSports.map((sport) => (
-                <option key={sport.id} value={sport.id}>
-                  #{sport.id} · {sport.label}
+              <option value="">{sportsLoading ? 'Loading sports…' : 'Select a sport'}</option>
+              {sports?.map((sport) => (
+                <option key={sport.sport_id} value={sport.sport_id}>
+                  #{sport.sport_id} · {sport.name}
                 </option>
               ))}
             </select>
@@ -162,11 +172,14 @@ const WeeklyGrid = () => {
               className="rb-select"
               value={formState.category}
               onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
+              disabled={!focusOptions.length}
             >
-              <option value="">Optional</option>
-              {categoryOptions.map((category) => (
-                <option key={category} value={category}>
-                  {category}
+              <option value="">
+                {focusOptions.length ? 'Optional focus' : 'No focuses for this sport'}
+              </option>
+              {focusOptions.map((focus) => (
+                <option key={focus.focus_id} value={focus.name}>
+                  {focus.name}
                 </option>
               ))}
             </select>

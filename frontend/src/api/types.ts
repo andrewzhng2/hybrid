@@ -55,5 +55,18 @@ export interface MuscleLoadResponse {
   muscles: MuscleLoad[]
 }
 
+export interface SportFocus {
+  focus_id: number
+  sport_id: number
+  name: string
+}
+
+export interface Sport {
+  sport_id: number
+  name: string
+  default_intensity_scale?: number | null
+  focuses: SportFocus[]
+}
+
 
 

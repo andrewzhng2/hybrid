@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies import get_snowflake_service
 from app.schemas.activity import Activity, ActivityCreate
 from app.schemas.muscle import MuscleLoadResponse
+from app.schemas.sport import Sport
 from app.schemas.week import WeekSummary
 from app.services.errors import SnowflakeServiceError
 from app.services.snowflake import SnowflakeService
@@ -17,6 +18,20 @@ api_router = APIRouter()
 def health_check() -> dict[str, str]:
     """Simple readiness probe used by dev tooling."""
     return {"status": "ok"}
+
+
+@api_router.get("/sports", response_model=list[Sport])
+def list_sports(
+    service: SnowflakeService = Depends(get_snowflake_service),
+) -> list[Sport]:
+    """Return each sport and its configured focuses."""
+    try:
+        return service.get_sports()
+    except SnowflakeServiceError as exc:  # pragma: no cover - fastapi handles HTTP
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
 
 @api_router.post(

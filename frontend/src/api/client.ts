@@ -1,4 +1,4 @@
-import type { ActivityCreate, MuscleLoadResponse, WeekSummary } from './types'
+import type { ActivityCreate, MuscleLoadResponse, Sport, WeekSummary } from './types'
 
 const API_BASE_URL = import.meta.env.VITE_API_URL ?? '/api'
 
@@ -22,6 +22,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const api = {
   getWeekSummary: (weekStart: string) => request<WeekSummary>(`/week/${weekStart}`),
   getMuscleLoad: (weekStart: string) => request<MuscleLoadResponse>(`/muscle-load/${weekStart}`),
+  getSports: () => request<Sport[]>('/sports'),
   createActivity: (payload: ActivityCreate) =>
     request('/activities', {
       method: 'POST',

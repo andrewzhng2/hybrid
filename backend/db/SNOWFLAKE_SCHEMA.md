@@ -27,8 +27,16 @@ Hybrid treats Snowflake as the primary source of truth for every entity: user pr
 | column | type | notes |
 | `sport_id` | NUMBER | PK |
 | `name` | VARCHAR | Human-readable label. |
-| `category` | VARCHAR | Cardio / Strength / Mobility / Mixed (optional). |
 | `default_intensity_scale` | NUMBER | Helps normalize RPE for each sport (optional). |
+
+### `sport_focus`
+Used to fan out one sport into multiple focuses (e.g., Endurance Swim vs Sprint Swim) without duplicating the parent sport.
+
+| column | type | notes |
+| --- | --- | --- |
+| `focus_id` | NUMBER | PK, identity. |
+| `sport_id` | NUMBER | FK → `sports.sport_id`. |
+| `name` | VARCHAR | Label shown in UI and reports. |
 
 ### `muscle_groups`
 | column | type | notes |
@@ -46,6 +54,7 @@ Mapping table that powers every derived muscle metric.
 | `base_load_per_minute` | FLOAT | 1.0 for primary movers, 0.3 for stabilizers, etc. |
 | `emphasis` | VARCHAR | Optional text descriptor (primary / secondary / stability). |
 | `unilateral` | BOOLEAN | Flag single-leg/single-arm drills. |
+| `focus_id` | NUMBER | Optional FK → `sport_focus.focus_id` for focus-specific loads. |
 
 ### `activity_sessions`
 | column | type | notes |
@@ -55,7 +64,7 @@ Mapping table that powers every derived muscle metric.
 | `week_id` | NUMBER | FK → `weeks`. |
 | `session_date` | DATE | Exact calendar day. |
 | `sport_id` | NUMBER | FK → `sports`. |
-| `category` | VARCHAR | Optional override if different from `sports.category`. |
+| `category` | VARCHAR | Optional session-level tag (e.g., Endurance, Technique). |
 | `duration_minutes` | NUMBER | Positive integer. |
 | `intensity_rpe` | NUMBER | 1–10 (RPE scale). |
 | `notes` | VARCHAR | Optional free text. |

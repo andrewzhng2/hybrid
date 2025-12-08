@@ -19,6 +19,13 @@ export const useMuscleLoad = (weekStart: string) =>
     staleTime: 1000 * 60,
   })
 
+export const useSports = () =>
+  useQuery({
+    queryKey: ['sports'],
+    queryFn: () => api.getSports(),
+    staleTime: 1000 * 60 * 5,
+  })
+
 export const useCreateActivity = (weekStart: string) => {
   const queryClient = useQueryClient()
 

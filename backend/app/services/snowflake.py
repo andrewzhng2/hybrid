@@ -1,6 +1,7 @@
 """Snowflake service layer containing DB reads/writes."""
 from __future__ import annotations
 
+from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import date, timedelta
 from typing import Callable, Dict, Iterator, List
@@ -10,6 +11,7 @@ from snowflake.connector.errors import Error as SnowflakeConnectorError
 
 from app.schemas.activity import Activity, ActivityCreate
 from app.schemas.muscle import MuscleLoad, MuscleLoadResponse
+from app.schemas.sport import Sport, SportFocus
 from app.schemas.week import SportBreakdown, WeekStats, WeekSummary
 from app.services.errors import SnowflakeServiceError
 
@@ -133,6 +135,62 @@ class SnowflakeService:
             ),
             activities=activities,
         )
+
+    def get_sports(self) -> List[Sport]:
+        """Return all sports with their associated focuses."""
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                select
+                    s.sport_id,
+                    s.name as sport_name,
+                    s.default_intensity_scale,
+                    f.focus_id,
+                    f.name as focus_name
+                from sports s
+                left join sport_focus f on f.sport_id = s.sport_id
+                order by s.sport_id asc, f.focus_id asc
+                """
+            )
+            rows = cursor.fetchall() or []
+
+        sports: "OrderedDict[int, dict[str, object]]" = OrderedDict()
+        for row in rows:
+            normalized = self._normalize_row(row)
+            sport_id = int(normalized["sport_id"])
+            sport_entry = sports.get(sport_id)
+            if not sport_entry:
+                sport_entry = {
+                    "sport_id": sport_id,
+                    "name": normalized["sport_name"],
+                    "default_intensity_scale": normalized.get("default_intensity_scale"),
+                    "focuses": [],
+                }
+                sports[sport_id] = sport_entry
+
+            focus_id = normalized.get("focus_id")
+            focus_name = normalized.get("focus_name")
+            if focus_id is not None and focus_name:
+                sport_entry["focuses"].append(
+                    SportFocus(
+                        focus_id=int(focus_id),
+                        sport_id=sport_id,
+                        name=focus_name,
+                    )
+                )
+
+        result: List[Sport] = []
+        for entry in sports.values():
+            default_scale = entry.get("default_intensity_scale")
+            result.append(
+                Sport(
+                    sport_id=entry["sport_id"],
+                    name=entry["name"],
+                    default_intensity_scale=float(default_scale) if default_scale is not None else None,
+                    focuses=entry["focuses"],
+                )
+            )
+        return result
 
     def get_muscle_load(self, week_start_date: date) -> MuscleLoadResponse:
         """Fetch aggregated muscle load data for a week."""
