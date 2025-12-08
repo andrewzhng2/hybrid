@@ -440,6 +440,7 @@ body {
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
   gap: 2rem;
   justify-items: center;
+  align-items: stretch;
   width: 100%;
   position: relative;
 }
@@ -448,6 +449,10 @@ body {
   position: relative;
   width: min(320px, 100%);
   aspect-ratio: 180 / 520;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
 }
 
 .figure-svg {
@@ -492,6 +497,15 @@ body {
   opacity: 0.4;
 }
 
+.muscle-region.region-mental {
+  border-top-left-radius: 999px;
+  border-top-right-radius: 999px;
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+  padding-top: 0.4rem;
+  padding-bottom: 0.2rem;
+}
+
 .muscle-region.heat-white {
   background: rgba(255, 255, 255, 0.06);
   border-color: rgba(255, 255, 255, 0.12);
@@ -515,45 +529,63 @@ body {
   color: #2a0010;
 }
 
-.fallback-region {
-  position: absolute;
-  left: 50%;
-  bottom: 6%;
-  transform: translate(-50%, 0);
+.other-muscles-column {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  width: 100%;
+  align-self: stretch;
+}
+
+.other-muscles-panel {
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+  border-radius: 1.1rem;
+  padding: 0.75rem 1rem;
+  background: rgba(6, 10, 26, 0.85);
+  box-shadow: 0 8px 18px rgba(3, 4, 12, 0.5);
+  width: min(220px, 85vw);
+  min-height: 140px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.65rem 1rem;
-  border-radius: 1.1rem;
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  background: rgba(8, 10, 23, 0.88);
-  box-shadow: 0 10px 24px rgba(3, 5, 15, 0.65);
-  min-width: 210px;
-  max-width: 260px;
+  gap: 0.5rem;
+  margin-top: auto;
+}
+
+.other-muscles-panel .region-label {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
   text-align: center;
+  color: var(--rb-muted);
 }
 
-.fallback-grid {
+.other-muscles-list {
   display: flex;
-  gap: 0.4rem;
-  flex-wrap: wrap;
-  justify-content: center;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-height: 150px;
+  overflow-y: auto;
+  padding-right: 0.2rem;
 }
 
-.fallback-pill {
-  display: inline-flex;
+.other-muscle-row {
+  display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 0.25rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: 999px;
-  font-size: 0.65rem;
-  line-height: 1;
-  border: 1px solid rgba(255, 255, 255, 0.18);
+  padding: 0.3rem 0.5rem;
+  border-radius: 0.8rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-size: 0.7rem;
+  background: rgba(255, 255, 255, 0.04);
 }
 
-.fallback-pill .fallback-score {
+.other-muscle-row .other-score {
   font-weight: 600;
+}
+
+.other-score--empty {
+  opacity: 0.5;
 }
 
 .heat-legend {
@@ -634,10 +666,6 @@ body {
   .figure-grid {
     gap: 1.5rem;
   }
-
-  .fallback-region {
-    bottom: 3%;
-  }
 }
 
 @media (max-width: 720px) {
@@ -653,15 +681,6 @@ body {
 
   .figure-grid {
     grid-template-columns: 1fr;
-  }
-
-  .fallback-region {
-    position: static;
-    transform: none;
-    width: min(320px, 100%);
-    max-width: 100%;
-    margin: 0.5rem auto 0;
-    box-shadow: 0 6px 18px rgba(3, 5, 15, 0.45);
   }
 }
 

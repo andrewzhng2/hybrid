@@ -11,7 +11,6 @@ import {
   findRegionsForMuscle,
   loadCategoryToClass,
   type BodyRegion,
-  type FigureSide,
 } from './bodyRegions'
 
 const loadDescriptions: Record<string, string> = {
@@ -40,7 +39,7 @@ const BodyHeatMap = () => {
           <p>Loading muscle data...</p>
         ) : (
           <>
-            <div className="heatmap-wrapper">
+          <div className="heatmap-wrapper">
               <BodyOverlay muscles={data.muscles} />
             </div>
             <Legend />
@@ -51,10 +50,19 @@ const BodyHeatMap = () => {
   )
 }
 
-const figures: { side: FigureSide; Component: typeof FrontFigure }[] = [
-  { side: 'front', Component: FrontFigure },
-  { side: 'back', Component: BackFigure },
-]
+const normalizeMuscleName = (value: string) => value.trim().toLowerCase()
+const muscleSlug = (value: string) => normalizeMuscleName(value).replace(/[^a-z]/g, '')
+const forcedOtherAliases = new Set([
+  'lats',
+  'lat',
+  'latissimus',
+  'latissimusdorsi',
+  'adductors',
+  'adductor',
+  'balance',
+  'footwork',
+  'stability',
+])
 
 const BodyOverlay = ({ muscles }: { muscles: MuscleLoad[] }) => {
   if (muscles.length === 0) {
@@ -62,12 +70,18 @@ const BodyOverlay = ({ muscles }: { muscles: MuscleLoad[] }) => {
   }
 
   const regionLoads = new Map<string, MuscleLoad>()
-  const unmatched: MuscleLoad[] = []
+  const otherMuscles: MuscleLoad[] = []
 
   muscles.forEach((muscle) => {
+    const slug = muscleSlug(muscle.muscle_name)
+    if (forcedOtherAliases.has(slug)) {
+      otherMuscles.push(muscle)
+      return
+    }
+
     const matches = findRegionsForMuscle(muscle)
     if (matches.length === 0) {
-      unmatched.push(muscle)
+      otherMuscles.push(muscle)
       return
     }
 
@@ -81,23 +95,41 @@ const BodyOverlay = ({ muscles }: { muscles: MuscleLoad[] }) => {
   return (
     <div className="body-heat-map">
       <div className="figure-grid">
-        {figures.map(({ side, Component }) => (
-          <div key={side} className={`figure figure-${side}`}>
-            <Component className="figure-svg" aria-hidden="true" />
-            <div className="region-layer">
-              {bodyRegions
-                .filter((region) => region.figure === side)
-                .map((region) => (
-                  <RegionSwatch
-                    key={region.id}
-                    region={region}
-                    load={regionLoads.get(region.id) ?? null}
-                  />
-                ))}
-            </div>
+        <div className="figure figure-front">
+          <FrontFigure className="figure-svg" aria-hidden="true" />
+          <div className="region-layer">
+            {bodyRegions
+              .filter((region) => region.figure === 'front')
+              .map((region) => (
+                <RegionSwatch
+                  key={region.id}
+                  region={region}
+                  load={regionLoads.get(region.id) ?? null}
+                />
+              ))}
           </div>
-        ))}
-        {unmatched.length > 0 && <FallbackSwatch muscles={unmatched} />}
+        </div>
+
+        {otherMuscles.length > 0 && (
+          <div className="other-muscles-column">
+            <OtherMusclesPanel muscles={otherMuscles} />
+          </div>
+        )}
+
+        <div className="figure figure-back">
+          <BackFigure className="figure-svg" aria-hidden="true" />
+          <div className="region-layer">
+            {bodyRegions
+              .filter((region) => region.figure === 'back')
+              .map((region) => (
+                <RegionSwatch
+                  key={region.id}
+                  region={region}
+                  load={regionLoads.get(region.id) ?? null}
+                />
+              ))}
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -118,12 +150,17 @@ const RegionSwatch = ({
   }
 
   const categoryClass = load ? loadCategoryToClass(load.load_category) : 'heat-white'
+  const shapeClass = region.id === 'mental' ? 'region-mental' : ''
   const title = load
     ? `${region.label}: ${Math.round(load.load_score)} (${load.load_category})`
     : `${region.label}: no data`
 
   return (
-    <div className={`muscle-region ${categoryClass}`} style={style} title={title}>
+    <div
+      className={`muscle-region ${categoryClass} ${shapeClass}`}
+      style={style}
+      title={title}
+    >
       <span className="region-label">{region.label}</span>
       {load ? (
         <span className="region-score">{Math.round(load.load_score)}</span>
@@ -134,23 +171,59 @@ const RegionSwatch = ({
   )
 }
 
-const FallbackSwatch = ({ muscles }: { muscles: MuscleLoad[] }) => (
-  <div className="fallback-region">
-    <span className="region-label">Other muscles</span>
-    <div className="fallback-grid">
-      {muscles.map((muscle) => (
-        <span
-          key={muscle.muscle_id}
-          className={`fallback-pill ${loadCategoryToClass(muscle.load_category)}`}
-          title={`${muscle.muscle_name}: ${Math.round(muscle.load_score)}`}
-        >
-          <span className="fallback-name">{muscle.muscle_name}</span>
-          <span className="fallback-score">{Math.round(muscle.load_score)}</span>
-        </span>
-      ))}
+const prioritizedOther = ['Lats', 'Adductors', 'Balance']
+const prioritizedOtherSlugs = new Set(prioritizedOther.map(muscleSlug))
+
+const OtherMusclesPanel = ({ muscles }: { muscles: MuscleLoad[] }) => {
+  const bySlug = new Map<string, MuscleLoad>()
+
+  muscles.forEach((muscle) => {
+    const slug = muscleSlug(muscle.muscle_name)
+    if (!bySlug.has(slug)) {
+      bySlug.set(slug, muscle)
+    }
+  })
+
+  const prioritizedMuscles: { name: string; muscle: MuscleLoad | null }[] = prioritizedOther.map(
+    (name) => ({
+      name,
+      muscle: bySlug.get(muscleSlug(name)) ?? null,
+    })
+  )
+
+  const remaining = Array.from(bySlug.entries())
+    .filter(([slug]) => !prioritizedOtherSlugs.has(slug))
+    .map(([, muscle]) => muscle)
+
+  const displayList = [
+    ...prioritizedMuscles,
+    ...remaining.map((muscle) => ({ name: muscle.muscle_name, muscle })),
+  ]
+
+  if (displayList.length === 0) {
+    return null
+  }
+
+  return (
+    <div className="other-muscles-panel">
+      <span className="region-label">Other muscles</span>
+      <div className="other-muscles-list">
+        {displayList.map(({ name, muscle }, index) => {
+          const categoryClass = muscle ? loadCategoryToClass(muscle.load_category) : 'heat-white'
+          const score = muscle ? Math.round(muscle.load_score) : '—'
+          const title = muscle ? `${muscle.muscle_name}: ${score}` : `${name}: no data`
+
+          return (
+            <span key={`${name}-${index}`} className={`other-muscle-row ${categoryClass}`} title={title}>
+              <span className="other-name">{name}</span>
+              <span className={`other-score ${muscle ? '' : 'other-score--empty'}`}>{score}</span>
+            </span>
+          )
+        })}
+      </div>
     </div>
-  </div>
-)
+  )
+}
 
 const Legend = () => (
   <div className="heat-legend">
