@@ -41,7 +41,7 @@ const WeeklyGrid = () => {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
-    if (!formState.sport_id || !formState.duration_minutes) {
+    if (!isFormValid) {
       return
     }
 
@@ -69,6 +69,35 @@ const WeeklyGrid = () => {
   }, [sports, formState.sport_id])
 
   const focusOptions = selectedSport?.focuses ?? []
+
+  useEffect(() => {
+    setFormState((prev) => {
+      if (!selectedSport) {
+        return prev.category ? { ...prev, category: '' } : prev
+      }
+      const focusNames = selectedSport.focuses.map((focus) => focus.name)
+      if (!focusNames.length) {
+        return prev.category ? { ...prev, category: '' } : prev
+      }
+      if (focusNames.includes(prev.category)) {
+        return prev
+      }
+      return { ...prev, category: focusNames[0] }
+    })
+  }, [selectedSport])
+
+  const isFormValid = useMemo(() => {
+    const duration = Number(formState.duration_minutes)
+    const intensity = Number(formState.intensity_rpe)
+    return Boolean(
+      formState.date &&
+      formState.sport_id &&
+      formState.category &&
+      duration > 0 &&
+      intensity >= 1 &&
+      intensity <= 10,
+    )
+  }, [formState])
 
   return (
     <section className="page-stack">
@@ -157,6 +186,7 @@ const WeeklyGrid = () => {
                 }))
               }
               disabled={sportsLoading}
+              required
             >
               <option value="">{sportsLoading ? 'Loading sports…' : 'Select a sport'}</option>
               {sports?.map((sport) => (
@@ -167,15 +197,16 @@ const WeeklyGrid = () => {
             </select>
           </label>
           <label>
-            Category
+            Sport focus
             <select
               className="rb-select"
               value={formState.category}
               onChange={(event) => setFormState((prev) => ({ ...prev, category: event.target.value }))}
               disabled={!focusOptions.length}
+              required
             >
               <option value="">
-                {focusOptions.length ? 'Optional focus' : 'No focuses for this sport'}
+                {focusOptions.length ? 'Select a focus' : 'No focuses for this sport'}
               </option>
               {focusOptions.map((focus) => (
                 <option key={focus.focus_id} value={focus.name}>
@@ -215,7 +246,7 @@ const WeeklyGrid = () => {
             />
           </label>
           <div className="form-actions">
-            <Button type="submit" loading={createActivity.isPending}>
+            <Button type="submit" loading={createActivity.isPending} disabled={!isFormValid}>
               Save activity
             </Button>
           </div>

@@ -1,6 +1,7 @@
 """Snowflake service layer containing DB reads/writes."""
 from __future__ import annotations
 
+import logging
 from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import date, timedelta
@@ -14,6 +15,10 @@ from app.schemas.muscle import MuscleLoad, MuscleLoadResponse
 from app.schemas.sport import Sport, SportFocus
 from app.schemas.week import SportBreakdown, WeekStats, WeekSummary
 from app.services.errors import SnowflakeServiceError
+from app.services.load_formula import LoadInputs, muscle_load_score
+
+
+logger = logging.getLogger(__name__)
 
 
 class SnowflakeService:
@@ -98,7 +103,7 @@ class SnowflakeService:
                 raise SnowflakeServiceError("Unable to create activity session.")
 
             normalized = self._normalize_row(row)
-            return Activity(
+            activity = Activity(
                 activity_id=int(normalized["activity_id"]),
                 week_id=int(normalized["week_id"]),
                 sport_id=int(normalized["sport_id"]),
@@ -108,6 +113,8 @@ class SnowflakeService:
                 intensity_rpe=int(normalized["intensity_rpe"]),
                 notes=normalized.get("notes"),
             )
+            self._update_muscle_loads_for_activity(cursor, activity)
+            return activity
 
     def get_week_summary(self, week_start_date: date) -> WeekSummary:
         """Fetch all activities + aggregates for a week."""
@@ -239,9 +246,206 @@ class SnowflakeService:
             muscles=muscles,
         )
 
+    def rebuild_daily_muscle_loads(self, start_date: date, end_date: date | None = None) -> int:
+        """Recompute daily muscle loads for an inclusive date range."""
+        if end_date is None:
+            end_date = start_date
+        if end_date < start_date:
+            raise SnowflakeServiceError("end_date must be on or after start_date.")
+
+        with self._cursor() as cursor:
+            cursor.execute(
+                """
+                delete from daily_muscle_loads
+                where user_id = %(user_id)s
+                  and date between %(start)s and %(end)s
+                """,
+                {
+                    "user_id": self._default_user_id,
+                    "start": start_date,
+                    "end": end_date,
+                },
+            )
+            activities = self._fetch_activities_by_date(cursor, start_date, end_date)
+            for activity in activities:
+                self._update_muscle_loads_for_activity(cursor, activity)
+
+        logger.info(
+            "Rebuilt daily muscle loads for %s activities between %s and %s",
+            len(activities),
+            start_date,
+            end_date,
+        )
+        return len(activities)
+
     # ------------------------------------------------------------------ #
     # Internal helpers
     # ------------------------------------------------------------------ #
+    def _update_muscle_loads_for_activity(self, cursor: DictCursor, activity: Activity) -> None:
+        """Compute and persist daily muscle loads for the given activity."""
+        focus_id = self._resolve_focus_id(cursor, activity.sport_id, activity.category)
+        configs = self._fetch_muscle_load_configs(cursor, activity.sport_id, focus_id)
+        if not configs:
+            logger.debug(
+                "Skipping muscle load calc for sport_id=%s focus_id=%s (no configs)",
+                activity.sport_id,
+                focus_id,
+            )
+            return
+
+        for config in configs:
+            base_load = config.get("base_load_per_minute")
+            if base_load is None:
+                continue
+            load_value = muscle_load_score(
+                LoadInputs(
+                    duration_minutes=activity.duration_minutes,
+                    base_load_per_minute=float(base_load),
+                    intensity_rpe=activity.intensity_rpe,
+                    is_unilateral=bool(config.get("unilateral")),
+                    has_emphasis=bool(config.get("emphasis")),
+                )
+            )
+            self._upsert_daily_muscle_load(
+                cursor=cursor,
+                week_id=activity.week_id,
+                session_date=activity.date,
+                muscle_id=int(config["muscle_id"]),
+                load_score=load_value,
+            )
+
+    def _resolve_focus_id(
+        self,
+        cursor: DictCursor,
+        sport_id: int,
+        category: str | None,
+    ) -> int | None:
+        """Translate an activity category into a focus_id."""
+        if not category:
+            return None
+        trimmed = category.strip()
+        if not trimmed:
+            return None
+        cursor.execute(
+            """
+            select focus_id
+            from sport_focus
+            where sport_id = %(sport_id)s
+              and lower(name) = lower(%(focus_name)s)
+            limit 1
+            """,
+            {"sport_id": sport_id, "focus_name": trimmed},
+        )
+        row = cursor.fetchone()
+        if not row:
+            logger.debug(
+                "No focus matched for sport_id=%s category=%s",
+                sport_id,
+                trimmed,
+            )
+            return None
+        normalized = self._normalize_row(row)
+        focus_value = normalized.get("focus_id")
+        return int(focus_value) if focus_value is not None else None
+
+    def _fetch_muscle_load_configs(
+        self,
+        cursor: DictCursor,
+        sport_id: int,
+        focus_id: int | None,
+    ) -> List[Dict[str, object]]:
+        """Return the muscle load configuration rows for the sport/focus."""
+        base_sql = """
+            select muscle_id, base_load_per_minute, emphasis, unilateral, focus_id
+            from sport_muscle_loads
+            where sport_id = %(sport_id)s
+        """
+        params: Dict[str, object] = {"sport_id": sport_id}
+        if focus_id is None:
+            sql = base_sql + " and focus_id is null"
+        else:
+            sql = base_sql + " and (focus_id = %(focus_id)s or focus_id is null)"
+            params["focus_id"] = focus_id
+
+        cursor.execute(sql, params)
+        rows = cursor.fetchall() or []
+        if not rows:
+            return []
+
+        prioritized: Dict[int, Dict[str, object]] = {}
+        if focus_id is not None:
+            for row in rows:
+                normalized = self._normalize_row(row)
+                row_focus = normalized.get("focus_id")
+                if row_focus is None:
+                    continue
+                if int(row_focus) == focus_id:
+                    muscle_id = int(normalized["muscle_id"])
+                    normalized["muscle_id"] = muscle_id
+                    normalized["focus_id"] = focus_id
+                    prioritized[muscle_id] = normalized
+
+        for row in rows:
+            normalized = self._normalize_row(row)
+            muscle_id = int(normalized["muscle_id"])
+            normalized["muscle_id"] = muscle_id
+            row_focus = normalized.get("focus_id")
+            normalized["focus_id"] = int(row_focus) if row_focus is not None else None
+            if muscle_id in prioritized:
+                continue
+            if normalized["focus_id"] is None:
+                prioritized[muscle_id] = normalized
+
+        return list(prioritized.values())
+
+    def _upsert_daily_muscle_load(
+        self,
+        cursor: DictCursor,
+        week_id: int,
+        session_date: date,
+        muscle_id: int,
+        load_score: float,
+    ) -> None:
+        """Merge a single muscle load contribution into daily_muscle_loads."""
+        if load_score <= 0:
+            return
+
+        params = {
+            "user_id": self._default_user_id,
+            "week_id": week_id,
+            "session_date": session_date,
+            "muscle_id": muscle_id,
+            "load_score": load_score,
+        }
+        cursor.execute(
+            """
+            merge into daily_muscle_loads as target
+            using (
+                select
+                    %(user_id)s as user_id,
+                    %(week_id)s as week_id,
+                    %(session_date)s as session_date,
+                    %(muscle_id)s as muscle_id,
+                    %(load_score)s as load_score
+            ) as source
+            on target.user_id = source.user_id
+               and target.muscle_id = source.muscle_id
+               and target.date = source.session_date
+            when matched then update set
+                load_score = target.load_score + source.load_score,
+                week_id = source.week_id
+            when not matched then insert (user_id, week_id, date, muscle_id, load_score)
+            values (
+                source.user_id,
+                source.week_id,
+                source.session_date,
+                source.muscle_id,
+                source.load_score
+            )
+            """,
+            params,
+        )
+
     @contextmanager
     def _cursor(self) -> Iterator[DictCursor]:
         """Yield a DictCursor backed by a brand-new connection."""

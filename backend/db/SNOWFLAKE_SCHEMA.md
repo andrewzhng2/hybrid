@@ -115,4 +115,10 @@ Feel free to tweak the thresholds in `app/services/snowflake.py`.
 5. Run `python -m scripts.check_snowflake` from the `backend` directory to confirm credentials.
 
 
+## Daily Muscle Load Maintenance
+
+- Recompute historical `daily_muscle_loads` rows with `python -m scripts.rebuild_daily_loads 2024-01-01 --end-date 2024-01-07`.
+- The script deletes existing rows for the inclusive range and replays every `activity_session`, ensuring the Body Heat map reflects the latest sport focus configuration.
+
+
 
