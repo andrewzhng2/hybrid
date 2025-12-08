@@ -16,8 +16,8 @@ class FakeSnowflakeService:
                 MuscleLoad(
                     muscle_id=1,
                     muscle_name="Quads",
-                    load_score=42.0,
-                    load_category="orange",
+                    load_score=1.1,
+                    load_category="green",
                 )
             ],
         )
@@ -35,4 +35,4 @@ def test_muscle_load_endpoint_returns_payload() -> None:
     assert payload["week_start_date"] == "2024-01-01"
     assert payload["week_end_date"] == "2024-01-07"
     assert payload["muscles"][0]["muscle_name"] == "Quads"
-    assert payload["muscles"][0]["load_category"] == "orange"
+    assert payload["muscles"][0]["load_category"] == "green"

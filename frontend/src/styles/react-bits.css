@@ -511,6 +511,18 @@ body {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+.muscle-region.heat-blue {
+  background: linear-gradient(180deg, rgba(124, 195, 255, 0.82), rgba(37, 110, 255, 0.88));
+  border-color: rgba(71, 135, 255, 0.65);
+  color: #011635;
+}
+
+.muscle-region.heat-green {
+  background: linear-gradient(180deg, rgba(154, 237, 207, 0.84), rgba(34, 178, 94, 0.9));
+  border-color: rgba(34, 178, 94, 0.65);
+  color: #061d11;
+}
+
 .muscle-region.heat-yellow {
   background: linear-gradient(180deg, rgba(255, 198, 89, 0.75), rgba(255, 153, 0, 0.8));
   border-color: rgba(255, 198, 89, 0.6);
@@ -599,6 +611,14 @@ body {
 
 .heat-white {
   background: rgba(255, 255, 255, 0.02);
+}
+
+.heat-blue {
+  background: rgba(88, 149, 255, 0.14);
+}
+
+.heat-green {
+  background: rgba(90, 205, 152, 0.16);
 }
 
 .heat-yellow {

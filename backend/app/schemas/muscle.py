@@ -6,12 +6,15 @@ from pydantic import BaseModel, Field
 
 
 class MuscleLoad(BaseModel):
-    """Load value for a single muscle."""
+    """Per-muscle Acute:Chronic Workload Ratio (ACWR) for a given week."""
 
     muscle_id: int
     muscle_name: str
     load_score: float = Field(0.0, ge=0.0)
-    load_category: str = Field(..., description="white/yellow/orange/red classification.")
+    load_category: str = Field(
+        ...,
+        description="white/blue/green/yellow/orange/red classification.",
+    )
 
 
 class MuscleLoadResponse(BaseModel):

@@ -2,7 +2,7 @@ import { useOutletContext } from 'react-router-dom'
 
 import { BackFigure, FrontFigure } from '@/assets/body'
 import { useMuscleLoad } from '@/api/hooks'
-import type { MuscleLoad } from '@/api/types'
+import type { LoadCategory, MuscleLoad } from '@/api/types'
 import { Badge, Card } from '@/components/ui'
 import type { WeekContextValue } from '@/types/week'
 import { formatWeekRange } from '@/utils/date'
@@ -13,12 +13,20 @@ import {
   type BodyRegion,
 } from './bodyRegions'
 
-const loadDescriptions: Record<string, string> = {
-  white: 'Fresh',
-  yellow: 'Activated',
-  orange: 'Working HARD',
-  red: 'OVERWORKED',
-}
+const loadDescriptions: Array<{
+  category: LoadCategory
+  label: string
+  helper: string
+}> = [
+  { category: 'white', label: 'No data', helper: 'Nothing logged' },
+  { category: 'blue', label: 'Under-used', helper: 'ACWR below target' },
+  { category: 'green', label: 'In the zone', helper: 'ACWR on target' },
+  { category: 'yellow', label: 'Building', helper: 'ACWR slightly elevated' },
+  { category: 'orange', label: 'Pushing', helper: 'ACWR high' },
+  { category: 'red', label: 'Overworked', helper: 'ACWR very high' },
+]
+
+const formatAcwr = (value: number) => value.toFixed(2)
 
 const BodyHeatMap = () => {
   const { weekStart } = useOutletContext<WeekContextValue>()
@@ -152,7 +160,7 @@ const RegionSwatch = ({
   const categoryClass = load ? loadCategoryToClass(load.load_category) : 'heat-white'
   const shapeClass = region.id === 'mental' ? 'region-mental' : ''
   const title = load
-    ? `${region.label}: ${Math.round(load.load_score)} (${load.load_category})`
+    ? `${region.label}: ACWR ${formatAcwr(load.load_score)} (${load.load_category})`
     : `${region.label}: no data`
 
   return (
@@ -163,7 +171,7 @@ const RegionSwatch = ({
     >
       <span className="region-label">{region.label}</span>
       {load ? (
-        <span className="region-score">{Math.round(load.load_score)}</span>
+        <span className="region-score">{formatAcwr(load.load_score)}</span>
       ) : (
         <span className="region-score region-score--empty">—</span>
       )}
@@ -210,8 +218,10 @@ const OtherMusclesPanel = ({ muscles }: { muscles: MuscleLoad[] }) => {
       <div className="other-muscles-list">
         {displayList.map(({ name, muscle }, index) => {
           const categoryClass = muscle ? loadCategoryToClass(muscle.load_category) : 'heat-white'
-          const score = muscle ? Math.round(muscle.load_score) : '—'
-          const title = muscle ? `${muscle.muscle_name}: ${score}` : `${name}: no data`
+          const score = muscle ? formatAcwr(muscle.load_score) : '—'
+          const title = muscle
+            ? `${muscle.muscle_name}: ACWR ${score} (${muscle.load_category})`
+            : `${name}: no data`
 
           return (
             <span key={`${name}-${index}`} className={`other-muscle-row ${categoryClass}`} title={title}>
@@ -227,12 +237,12 @@ const OtherMusclesPanel = ({ muscles }: { muscles: MuscleLoad[] }) => {
 
 const Legend = () => (
   <div className="heat-legend">
-    {Object.entries(loadDescriptions).map(([category, label]) => (
+    {loadDescriptions.map(({ category, label, helper }) => (
       <div key={category} className="legend-item">
         <span className={`legend-swatch heat-${category}`} />
         <div>
           <p className="legend-label">{label}</p>
-          <p className="legend-sub">{category.toUpperCase()}</p>
+          <p className="legend-sub">{helper}</p>
         </div>
       </div>
     ))}

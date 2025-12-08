@@ -10,6 +10,7 @@ from typing import Callable, Dict, Iterator, List
 from snowflake.connector import DictCursor
 from snowflake.connector.errors import Error as SnowflakeConnectorError
 
+from app.config.muscles import color_for_muscle
 from app.schemas.activity import Activity, ActivityCreate
 from app.schemas.muscle import MuscleLoad, MuscleLoadResponse
 from app.schemas.sport import Sport, SportFocus
@@ -203,19 +204,38 @@ class SnowflakeService:
         """Fetch aggregated muscle load data for a week."""
         week_start = self._start_of_week(week_start_date)
         week_end = week_start + timedelta(days=6)
+        chronic_end = week_start - timedelta(days=1)
+        chronic_start = chronic_end - timedelta(days=27)
 
         with self._cursor() as cursor:
             load_sql = """
+                WITH windowed AS (
+                    SELECT muscle_id, date, load_score
+                    FROM daily_muscle_loads
+                    WHERE user_id = %(user_id)s
+                      AND date BETWEEN %(chronic_start)s AND %(week_end)s
+                ),
+                acute AS (
+                    SELECT muscle_id, SUM(load_score) AS acute_load
+                    FROM windowed
+                    WHERE date BETWEEN %(week_start)s AND %(week_end)s
+                    GROUP BY muscle_id
+                ),
+                chronic AS (
+                    SELECT muscle_id, SUM(load_score) AS chronic_load
+                    FROM windowed
+                    WHERE date BETWEEN %(chronic_start)s AND %(chronic_end)s
+                    GROUP BY muscle_id
+                )
                 SELECT
-                    d.muscle_id,
+                    a.muscle_id,
                     m.name AS muscle_name,
-                    SUM(d.load_score) AS load_score
-                FROM daily_muscle_loads d
-                JOIN muscle_groups m ON m.muscle_id = d.muscle_id
-                WHERE d.user_id = %(user_id)s
-                AND d.date BETWEEN %(week_start)s AND %(week_end)s
-                GROUP BY d.muscle_id, m.name
-                ORDER BY load_score DESC
+                    COALESCE(a.acute_load, 0) AS acute_load,
+                    COALESCE(c.chronic_load, 0) AS chronic_load
+                FROM acute a
+                JOIN muscle_groups m ON m.muscle_id = a.muscle_id
+                LEFT JOIN chronic c ON c.muscle_id = a.muscle_id
+                ORDER BY acute_load DESC
             """
             cursor.execute(
                 load_sql,
@@ -223,6 +243,8 @@ class SnowflakeService:
                     "user_id": self._default_user_id,
                     "week_start": week_start,
                     "week_end": week_end,
+                    "chronic_start": chronic_start,
+                    "chronic_end": chronic_end,
                 },
             )
             rows = cursor.fetchall() or []
@@ -230,13 +252,17 @@ class SnowflakeService:
         muscles: List[MuscleLoad] = []
         for row in rows:
             normalized = self._normalize_row(row)
-            score = float(normalized["load_score"])
+            acute_load = float(normalized.get("acute_load") or 0.0)
+            chronic_total = float(normalized.get("chronic_load") or 0.0)
+            chronic_average = chronic_total / 4 if chronic_total > 0 else 0.0
+            divisor = chronic_average if chronic_average > 0 else max(acute_load, 1.0)
+            acwr = acute_load / divisor if divisor > 0 else 0.0
             muscles.append(
                 MuscleLoad(
                     muscle_id=int(normalized["muscle_id"]),
                     muscle_name=normalized["muscle_name"],
-                    load_score=score,
-                    load_category=self._load_category(score),
+                    load_score=acwr,
+                    load_category=color_for_muscle(normalized["muscle_name"], acwr),
                 )
             )
 
@@ -668,17 +694,5 @@ class SnowflakeService:
         if not row:
             return {}
         return {key.lower(): value for key, value in row.items()}
-
-    @staticmethod
-    def _load_category(score: float) -> str:
-        """Map numeric load to UI bucket."""
-        if score <= 0:
-            return "white"
-        if score < 20:
-            return "yellow"
-        if score < 50:
-            return "orange"
-        return "red"
-
 
 

@@ -40,7 +40,7 @@ export interface WeekSummary {
   activities: Activity[]
 }
 
-export type LoadCategory = 'white' | 'yellow' | 'orange' | 'red'
+export type LoadCategory = 'white' | 'blue' | 'green' | 'yellow' | 'orange' | 'red'
 
 export interface MuscleLoad {
   muscle_id: number

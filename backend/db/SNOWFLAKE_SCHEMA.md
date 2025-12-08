@@ -83,9 +83,9 @@ Stores the aggregated muscle activation for a specific user/date. This is popula
 | `muscle_id` | NUMBER | FK → `muscle_groups`. |
 | `load_score` | FLOAT | Computed value. |
 | `overworked_flag` | BOOLEAN | Optional helper flag. |
-| `load_category` | VARCHAR | Optional pre-computed label (white/yellow/orange/red). |
+| `load_category` | VARCHAR | Optional pre-computed label (white/blue/green/yellow/orange/red). |
 
-### Load Formula
+### Load Formula & ACWR Buckets
 
 ```
 load_score = duration_minutes * base_load_per_minute * intensity_factor
@@ -96,16 +96,21 @@ Where:
 - `base_load_per_minute` comes from `sport_muscle_loads`.
 - `intensity_factor` is derived from RPE (e.g., map 1–10 to 0.6–1.4).
 
-The FastAPI service currently categorizes a muscle as:
+FastAPI consumes `daily_muscle_loads` to compute an Acute:Chronic Workload Ratio (ACWR) for every muscle when the `/muscle-load` endpoint is called:
 
-| bucket | rule |
-| --- | --- |
-| `white` | `score <= 0` |
-| `yellow` | `score < 20` |
-| `orange` | `score < 50` |
-| `red` | `score >= 50` |
+- **Acute**: total load for the requested 7-day window.
+- **Chronic**: total load across the prior 4 full weeks, averaged back down to a “per week” number.
+- **ACWR**: `acute / chronic_avg` (when chronic is `0`, the service falls back to treating ACWR as `1.0` to avoid infinite spikes).
 
-Feel free to tweak the thresholds in `app/services/snowflake.py`.
+Each muscle is assigned to a tier that determines its sensitivity to spikes (`core`, `glutes`, `upper back`, etc. → Tier **A**; `quads`, `hamstrings`, etc. → Tier **B**; `chest`, `biceps`, etc. → Tier **C**). The tiers map ACWR into UI buckets:
+
+| tier | blue | green | yellow | orange | red |
+| --- | --- | --- | --- | --- | --- |
+| **A** | `< 0.7` | `≤ 1.4` | `≤ 1.8` | `≤ 2.3` | `> 2.3` |
+| **B** | `< 0.8` | `≤ 1.3` | `≤ 1.5` | `≤ 1.8` | `> 1.8` |
+| **C** | `< 0.9` | `≤ 1.2` | `≤ 1.4` | `≤ 1.6` | `> 1.6` |
+
+White is reserved for muscles without any recorded load for the week.
 
 ## Connectivity Checklist
 1. Create a Snowflake role with access to the database, schema, warehouse, and tables above.
@@ -118,7 +123,7 @@ Feel free to tweak the thresholds in `app/services/snowflake.py`.
 ## Daily Muscle Load Maintenance
 
 - Recompute historical `daily_muscle_loads` rows with `python -m scripts.rebuild_daily_loads 2024-01-01 --end-date 2024-01-07`.
-- The script deletes existing rows for the inclusive range and replays every `activity_session`, ensuring the Body Heat map reflects the latest sport focus configuration.
+- The script deletes existing rows for the inclusive range and replays every `activity_session`, ensuring the Body Heat map (and downstream ACWR windows) reflect the latest sport focus configuration.
 
 
 
