@@ -35,8 +35,8 @@ const fatigueDescriptions: LegendDescription[] = [
   { category: 'blue', label: 'Fresh', helper: 'Light activation this week' },
   { category: 'green', label: 'Working', helper: 'Solid training stimulus' },
   { category: 'yellow', label: 'Fatigue building', helper: 'Noticeable wear, plan recovery' },
-  { category: 'orange', label: 'Taxed', helper: 'High structural load' },
-  { category: 'red', label: 'Cooked', helper: 'Deload before next block' },
+  { category: 'orange', label: 'Overworked', helper: 'High structural load' },
+  { category: 'red', label: 'Cooked', helper: 'PLEASE deload before next block' },
 ]
 
 const formatAcwr = (value: number) => value.toFixed(2)

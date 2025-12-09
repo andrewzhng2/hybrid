@@ -5,7 +5,7 @@ import { useCreateActivity, useDeleteActivity, useUpdateActivity, useWeekSummary
 import type { Activity } from '@/api/types'
 import { Button, Card, Input, Textarea } from '@/components/ui'
 import type { WeekContextValue } from '@/types/week'
-import { formatDisplayDate, getWeekDays } from '@/utils/date'
+import { formatDisplayDate, getWeekDays, toIsoDate } from '@/utils/date'
 
 const defaultFormState = (weekStart: string) => ({
   date: weekStart,
@@ -35,6 +35,7 @@ const formatDuration = (totalMinutes: number) => {
 const WeeklyGrid = () => {
   const { weekStart } = useOutletContext<WeekContextValue>()
   const weekDays = useMemo(() => getWeekDays(weekStart), [weekStart])
+  const todayIso = useMemo(() => toIsoDate(new Date()), [])
 
   const { data, isLoading } = useWeekSummary(weekStart)
   const { data: sports, isLoading: sportsLoading } = useSports()
@@ -207,61 +208,67 @@ const WeeklyGrid = () => {
         </header>
 
         <div className="weekly-grid">
-          {weekDays.map((day) => (
-            <div key={day} className="day-column">
-              <p className="day-label">{formatDisplayDate(day)}</p>
-              {isLoading && !data ? (
-                <p className="empty-state">Loading...</p>
-              ) : activitiesByDate[day]?.length ? (
-                activitiesByDate[day].map((activity) => {
-                  const sportLabel = sportNameById.get(activity.sport_id) ?? `Sport #${activity.sport_id}`
-                  const categoryLabel = activity.category ? ` · ${activity.category}` : ''
-                  const isDeleting = pendingDeleteId === activity.activity_id && deleteActivity.isPending
+          {weekDays.map((day) => {
+            const isToday = day === todayIso
+            return (
+              <div key={day} className={`day-column${isToday ? ' day-column--today' : ''}`} aria-current={isToday ? 'date' : undefined}>
+                <p className="day-label">
+                  {formatDisplayDate(day)}
+                  {isToday && <span className="day-badge">Today</span>}
+                </p>
+                {isLoading && !data ? (
+                  <p className="empty-state">Loading...</p>
+                ) : activitiesByDate[day]?.length ? (
+                  activitiesByDate[day].map((activity) => {
+                    const sportLabel = sportNameById.get(activity.sport_id) ?? `Sport #${activity.sport_id}`
+                    const categoryLabel = activity.category ? ` · ${activity.category}` : ''
+                    const isDeleting = pendingDeleteId === activity.activity_id && deleteActivity.isPending
 
-                  return (
-                    <div
-                      key={activity.activity_id}
-                      className={`activity-chip intensity-${activity.intensity_rpe}${editingActivity?.activity_id === activity.activity_id ? ' activity-chip--active' : ''}`}
-                    >
-                      <p className="activity-title">
-                        {sportLabel}
-                        {categoryLabel}
-                      </p>
-                      <p className="activity-meta">
-                        {activity.duration_minutes} min · RPE {activity.intensity_rpe}
-                      </p>
-                      {activity.notes && <p className="activity-notes">{activity.notes}</p>}
-                      <div className="activity-footer">
-                        <button
-                          type="button"
-                          className="activity-action"
-                          aria-label="Edit session"
-                          title="Edit session"
-                          onClick={() => handleEditClick(activity)}
-                          disabled={isSubmitting || deleteActivity.isPending}
-                        >
-                          <EditIcon />
-                        </button>
-                        <button
-                          type="button"
-                          className="activity-action activity-action--danger"
-                          aria-label="Delete session"
-                          title="Delete session"
-                          onClick={() => handleDeleteClick(activity)}
-                          disabled={isSubmitting || deleteActivity.isPending}
-                        >
-                          {isDeleting && <span className="sr-only">Deleting session…</span>}
-                          <TrashIcon />
-                        </button>
+                    return (
+                      <div
+                        key={activity.activity_id}
+                        className={`activity-chip intensity-${activity.intensity_rpe}${editingActivity?.activity_id === activity.activity_id ? ' activity-chip--active' : ''}`}
+                      >
+                        <p className="activity-title">
+                          {sportLabel}
+                          {categoryLabel}
+                        </p>
+                        <p className="activity-meta">
+                          {activity.duration_minutes} min · RPE {activity.intensity_rpe}
+                        </p>
+                        {activity.notes && <p className="activity-notes">{activity.notes}</p>}
+                        <div className="activity-footer">
+                          <button
+                            type="button"
+                            className="activity-action"
+                            aria-label="Edit session"
+                            title="Edit session"
+                            onClick={() => handleEditClick(activity)}
+                            disabled={isSubmitting || deleteActivity.isPending}
+                          >
+                            <EditIcon />
+                          </button>
+                          <button
+                            type="button"
+                            className="activity-action activity-action--danger"
+                            aria-label="Delete session"
+                            title="Delete session"
+                            onClick={() => handleDeleteClick(activity)}
+                            disabled={isSubmitting || deleteActivity.isPending}
+                          >
+                            {isDeleting && <span className="sr-only">Deleting session…</span>}
+                            <TrashIcon />
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  )
-                })
-              ) : (
-                <p className="empty-state">Rest day</p>
-              )}
-            </div>
-          ))}
+                    )
+                  })
+                ) : (
+                  <p className="empty-state">Rest day</p>
+                )}
+              </div>
+            )
+          })}
         </div>
       </Card>
 

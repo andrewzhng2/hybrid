@@ -1,5 +1,5 @@
 import { Button } from './ui'
-import { shiftWeek } from '@/utils/date'
+import { shiftWeek, startOfWeekIso } from '@/utils/date'
 
 interface WeekSelectorProps {
   label: string
@@ -21,8 +21,14 @@ const WeekSelector = ({ label, weekStart, onWeekChange }: WeekSelectorProps) => 
         <input
           type="date"
           value={weekStart}
-          onChange={(event) => onWeekChange(event.target.value)}
+          onChange={(event) => {
+            const picked = event.target.value
+            if (!picked) return
+            const monday = startOfWeekIso(new Date(`${picked}T00:00:00Z`))
+            onWeekChange(monday)
+          }}
           className="rb-input week-input"
+          aria-label="Pick week (Mondays only)"
         />
       </div>
       <Button variant="ghost" size="sm" onClick={goNext}>

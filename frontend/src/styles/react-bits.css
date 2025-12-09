@@ -234,11 +234,28 @@ body {
   background: rgba(255, 255, 255, 0.02);
 }
 
+.day-column--today {
+  border-color: var(--rb-highlight);
+  box-shadow: 0 0 0 1px var(--rb-highlight-soft), 0 12px 30px -18px rgba(0, 0, 0, 0.8);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .day-label {
   margin: 0;
   color: var(--rb-muted);
   font-size: 0.85rem;
   letter-spacing: 0.08em;
+}
+
+.day-badge {
+  display: inline-block;
+  margin-left: 0.7rem;
+  padding: 0.03rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  letter-spacing: 0.03em;
+  color: #0d0f10;
+  background: var(--rb-highlight);
 }
 
 .activity-chip {

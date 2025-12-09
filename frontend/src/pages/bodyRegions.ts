@@ -45,14 +45,14 @@ export const bodyRegions: BodyRegion[] = [
     id: 'core',
     label: 'Core',
     figure: 'front',
-    bounds: { top: pct(32), left: pct(35), width: pct(30), height: pct(15) },
+    bounds: { top: pct(32), left: pct(35), width: pct(30), height: pct(17) },
     aliases: ['core', 'abs', 'abdominals'],
   },
   {
     id: 'hip-flexors',
     label: 'Hip Flexors',
     figure: 'front',
-    bounds: { top: pct(48), left: pct(35), width: pct(30), height: pct(10) },
+    bounds: { top: pct(50), left: pct(35), width: pct(30), height: pct(10) },
     aliases: ['hips', 'hip flexors', 'hip-flexors'],
   },
   {
@@ -87,7 +87,7 @@ export const bodyRegions: BodyRegion[] = [
     id: 'glutes',
     label: 'Glutes',
     figure: 'back',
-    bounds: { top: pct(52), left: pct(31), width: pct(38), height: pct(9) },
+    bounds: { top: pct(52), left: pct(33), width: pct(34), height: pct(9) },
     aliases: ['glutes', 'glute', 'gluteus', 'butt'],
   },
   {
