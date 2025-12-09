@@ -2,10 +2,65 @@ import { useEffect, useMemo, useState, useTransition, type ChangeEvent, type For
 import { useOutletContext } from 'react-router-dom'
 
 import { useCreateActivity, useDeleteActivity, useUpdateActivity, useWeekSummary, useSports } from '@/api/hooks'
-import type { Activity } from '@/api/types'
+import type { Activity, ActivityCreate } from '@/api/types'
 import { Button, Card, Input, Textarea } from '@/components/ui'
 import type { WeekContextValue } from '@/types/week'
 import { formatDisplayDate, getWeekDays, toIsoDate } from '@/utils/date'
+
+const plannedStorageKey = (weekStart: string) => `planned-activities:${weekStart}`
+
+const isBrowserStorageAvailable = () => {
+  try {
+    const testKey = '__planned__test'
+    window.localStorage.setItem(testKey, '1')
+    window.localStorage.removeItem(testKey)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const safeParsePlanned = (value: string | null): PlannedActivity[] => {
+  if (!value) {
+    return []
+  }
+  try {
+    const parsed = JSON.parse(value)
+    if (!Array.isArray(parsed)) {
+      return []
+    }
+    return parsed
+      .map((item) => ({
+        ...item,
+        planned: true as const,
+      }))
+      .filter((item) => item && item.planned === true)
+  } catch {
+    return []
+  }
+}
+
+const persistPlanned = (key: string, activities: PlannedActivity[]) => {
+  if (!isBrowserStorageAvailable()) return
+  window.localStorage.setItem(key, JSON.stringify(activities))
+}
+
+const generatePlannedId = () => {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `planned-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+type PlannedActivity = {
+  planned_id: string
+  planned: true
+} & ActivityCreate
+
+type ActivityDisplay = Activity | PlannedActivity
+
+const isPlannedActivity = (activity: ActivityDisplay): activity is PlannedActivity =>
+  'planned' in activity && activity.planned === true
 
 const defaultFormState = (weekStart: string) => ({
   date: weekStart,
@@ -14,6 +69,7 @@ const defaultFormState = (weekStart: string) => ({
   duration_minutes: '',
   intensity_rpe: 5,
   notes: '',
+  planned: false,
 })
 
 const formatDuration = (totalMinutes: number) => {
@@ -45,8 +101,11 @@ const WeeklyGrid = () => {
 
   const [formState, setFormState] = useState(() => defaultFormState(weekStart))
   const [editingActivity, setEditingActivity] = useState<Activity | null>(null)
-  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+  const [plannedActivities, setPlannedActivities] = useState<PlannedActivity[]>([])
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | number | null>(null)
+  const [convertingPlannedId, setConvertingPlannedId] = useState<string | null>(null)
   const [, startResetTransition] = useTransition()
+  const storageKey = useMemo(() => plannedStorageKey(weekStart), [weekStart])
 
   useEffect(() => {
     startResetTransition(() => {
@@ -55,14 +114,27 @@ const WeeklyGrid = () => {
     })
   }, [weekStart, startResetTransition])
 
+  useEffect(() => {
+    if (!isBrowserStorageAvailable()) {
+      setPlannedActivities([])
+      return
+    }
+    const stored = safeParsePlanned(window.localStorage.getItem(storageKey))
+    setPlannedActivities(stored)
+  }, [storageKey])
+
   const activitiesByDate = useMemo(() => {
-    const map: Record<string, Activity[]> = Object.fromEntries(weekDays.map((day) => [day, []]))
+    const map: Record<string, ActivityDisplay[]> = Object.fromEntries(weekDays.map((day) => [day, []]))
     data?.activities.forEach((activity) => {
       const key = activity.date.slice(0, 10)
       map[key] = [...(map[key] ?? []), activity]
     })
+    plannedActivities.forEach((activity) => {
+      const key = activity.date.slice(0, 10)
+      map[key] = [...(map[key] ?? []), activity]
+    })
     return map
-  }, [data?.activities, weekDays])
+  }, [data?.activities, plannedActivities, weekDays])
 
   const resetForm = () => {
     setFormState(defaultFormState(weekStart))
@@ -75,13 +147,31 @@ const WeeklyGrid = () => {
       return
     }
 
-    const payload = {
+    const category = formState.category.trim() ? formState.category.trim() : undefined
+    const notes = formState.notes.trim() ? formState.notes.trim() : undefined
+
+    const payload: ActivityCreate = {
       sport_id: Number(formState.sport_id),
       date: formState.date,
-      category: formState.category.trim() ? formState.category.trim() : undefined,
+      category,
       duration_minutes: Number(formState.duration_minutes),
       intensity_rpe: Number(formState.intensity_rpe),
-      notes: formState.notes.trim() ? formState.notes.trim() : undefined,
+      notes,
+    }
+
+    if (formState.planned && !editingActivity) {
+      const plannedEntry: PlannedActivity = {
+        ...payload,
+        planned_id: generatePlannedId(),
+        planned: true,
+      }
+      setPlannedActivities((prev) => {
+        const next = [...prev, plannedEntry]
+        persistPlanned(storageKey, next)
+        return next
+      })
+      resetForm()
+      return
     }
 
     if (editingActivity) {
@@ -124,6 +214,7 @@ const WeeklyGrid = () => {
       duration_minutes: String(activity.duration_minutes),
       intensity_rpe: activity.intensity_rpe,
       notes: activity.notes ?? '',
+      planned: false,
     })
   }
 
@@ -158,6 +249,42 @@ const WeeklyGrid = () => {
         }
       },
       onSettled: () => setPendingDeleteId(null),
+    })
+  }
+
+  const handleDeletePlanned = (plannedId: string) => {
+    const confirmed = window.confirm('Remove this planned session?')
+    if (!confirmed) {
+      return
+    }
+    setPendingDeleteId(plannedId)
+    setPlannedActivities((prev) => {
+      const next = prev.filter((item) => item.planned_id !== plannedId)
+      persistPlanned(storageKey, next)
+      return next
+    })
+    setPendingDeleteId(null)
+  }
+
+  const handleConvertPlanned = (plannedActivity: PlannedActivity) => {
+    setConvertingPlannedId(plannedActivity.planned_id)
+    const payload: ActivityCreate = {
+      sport_id: plannedActivity.sport_id,
+      date: plannedActivity.date,
+      category: plannedActivity.category,
+      duration_minutes: plannedActivity.duration_minutes,
+      intensity_rpe: plannedActivity.intensity_rpe,
+      notes: plannedActivity.notes,
+    }
+    createActivity.mutate(payload, {
+      onSuccess: () => {
+        setPlannedActivities((prev) => {
+          const next = prev.filter((item) => item.planned_id !== plannedActivity.planned_id)
+          persistPlanned(storageKey, next)
+          return next
+        })
+      },
+      onSettled: () => setConvertingPlannedId(null),
     })
   }
 
@@ -220,45 +347,94 @@ const WeeklyGrid = () => {
                   <p className="empty-state">Loading...</p>
                 ) : activitiesByDate[day]?.length ? (
                   activitiesByDate[day].map((activity) => {
+                    const isPlanned = isPlannedActivity(activity)
+                    const activityKey = isPlanned ? activity.planned_id : activity.activity_id
                     const sportLabel = sportNameById.get(activity.sport_id) ?? `Sport #${activity.sport_id}`
                     const categoryLabel = activity.category ? ` · ${activity.category}` : ''
-                    const isDeleting = pendingDeleteId === activity.activity_id && deleteActivity.isPending
+                    const isDeleting = pendingDeleteId === activityKey && deleteActivity.isPending
+                    const isEditingThis = !isPlanned && editingActivity?.activity_id === activity.activity_id
+                    const chipClasses = [
+                      'activity-chip',
+                      isPlanned ? 'activity-chip--planned' : `intensity-${activity.intensity_rpe}`,
+                      isEditingThis ? 'activity-chip--active' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')
 
                     return (
-                      <div
-                        key={activity.activity_id}
-                        className={`activity-chip intensity-${activity.intensity_rpe}${editingActivity?.activity_id === activity.activity_id ? ' activity-chip--active' : ''}`}
-                      >
+                      <div key={activityKey} className={chipClasses}>
                         <p className="activity-title">
                           {sportLabel}
                           {categoryLabel}
                         </p>
                         <p className="activity-meta">
+                          {isPlanned ? 'Planned · ' : ''}
                           {activity.duration_minutes} min · RPE {activity.intensity_rpe}
                         </p>
                         {activity.notes && <p className="activity-notes">{activity.notes}</p>}
                         <div className="activity-footer">
-                          <button
-                            type="button"
-                            className="activity-action"
-                            aria-label="Edit session"
-                            title="Edit session"
-                            onClick={() => handleEditClick(activity)}
-                            disabled={isSubmitting || deleteActivity.isPending}
-                          >
-                            <EditIcon />
-                          </button>
-                          <button
-                            type="button"
-                            className="activity-action activity-action--danger"
-                            aria-label="Delete session"
-                            title="Delete session"
-                            onClick={() => handleDeleteClick(activity)}
-                            disabled={isSubmitting || deleteActivity.isPending}
-                          >
-                            {isDeleting && <span className="sr-only">Deleting session…</span>}
-                            <TrashIcon />
-                          </button>
+                          {isPlanned ? (
+                            <>
+                              <button
+                                type="button"
+                                className="activity-action activity-action--confirm"
+                                aria-label="Convert planned session"
+                                title="Convert planned session"
+                                onClick={() => handleConvertPlanned(activity)}
+                                disabled={
+                                  isSubmitting ||
+                                  deleteActivity.isPending ||
+                                  convertingPlannedId === activity.planned_id
+                                }
+                              >
+                                {convertingPlannedId === activity.planned_id && (
+                                  <span className="sr-only">Converting planned session…</span>
+                                )}
+                                <CheckIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className="activity-action activity-action--danger"
+                                aria-label="Remove planned session"
+                                title="Remove planned session"
+                                onClick={() => handleDeletePlanned(activity.planned_id)}
+                                disabled={
+                                  isSubmitting ||
+                                  deleteActivity.isPending ||
+                                  convertingPlannedId === activity.planned_id
+                                }
+                              >
+                                {pendingDeleteId === activity.planned_id && (
+                                  <span className="sr-only">Removing planned session…</span>
+                                )}
+                                <TrashIcon />
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                className="activity-action"
+                                aria-label="Edit session"
+                                title="Edit session"
+                                onClick={() => handleEditClick(activity)}
+                                disabled={isSubmitting || deleteActivity.isPending}
+                              >
+                                <EditIcon />
+                              </button>
+                              <button
+                                type="button"
+                                className="activity-action activity-action--danger"
+                                aria-label="Delete session"
+                                title="Delete session"
+                                onClick={() => handleDeleteClick(activity)}
+                                disabled={isSubmitting || deleteActivity.isPending}
+                              >
+                                {isDeleting && <span className="sr-only">Deleting session…</span>}
+                                <TrashIcon />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     )
@@ -339,26 +515,38 @@ const WeeklyGrid = () => {
               required
             />
           </label>
-          <label>
-            RPE (1–10)
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={formState.intensity_rpe}
-              onChange={(event) => setFormState((prev) => ({ ...prev, intensity_rpe: Number(event.target.value) }))}
-              required
-            />
-          </label>
-          <label>
-            Notes
-            <Textarea
-              rows={3}
-              placeholder="How did the session feel?"
-              value={formState.notes}
-              onChange={(event) => setFormState((prev) => ({ ...prev, notes: event.target.value }))}
-            />
-          </label>
+          <div className="rpe-notes-row">
+            <label className="rpe-field">
+              RPE (1–10)
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={formState.intensity_rpe}
+                onChange={(event) => setFormState((prev) => ({ ...prev, intensity_rpe: Number(event.target.value) }))}
+                required
+              />
+            </label>
+            <label className="notes-field">
+              Notes
+              <Textarea
+                rows={3}
+                placeholder="How did the session feel?"
+                value={formState.notes}
+                onChange={(event) => setFormState((prev) => ({ ...prev, notes: event.target.value }))}
+              />
+            </label>
+            <label className="planned-toggle">
+              Planned?
+              <input
+                type="checkbox"
+                checked={formState.planned}
+                onChange={(event) => setFormState((prev) => ({ ...prev, planned: event.target.checked }))}
+                disabled={isEditMode || isSubmitting}
+              />
+              <span className="planned-helper">Keeps it off totals until confirmed.</span>
+            </label>
+          </div>
           <div className="form-actions">
             {isEditMode && (
               <Button type="button" variant="ghost" onClick={resetForm} disabled={isSubmitting}>
@@ -404,6 +592,19 @@ const TrashIcon = () => (
       d="M5 7h14M10 11v6M14 11v6M9 7l1-2h4l1 2M8 7h8v11a2 2 0 01-2 2h-4a2 2 0 01-2-2z"
       stroke="currentColor"
       strokeWidth={1.8}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      fill="none"
+    />
+  </svg>
+)
+
+const CheckIcon = () => (
+  <svg {...iconBaseProps}>
+    <path
+      d="M5 13l4 4 10-12"
+      stroke="currentColor"
+      strokeWidth={2}
       strokeLinecap="round"
       strokeLinejoin="round"
       fill="none"
