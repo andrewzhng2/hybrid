@@ -7,7 +7,7 @@ from app.dependencies import get_snowflake_service
 from app.schemas.activity import Activity, ActivityCreate, ActivityUpdate
 from app.schemas.muscle import MuscleLoadResponse
 from app.schemas.sport import Sport
-from app.schemas.week import WeekSummary
+from app.schemas.week import PeriodSummary, WeekSummary
 from app.services.errors import SnowflakeServiceError
 from app.services.snowflake import SnowflakeService
 
@@ -94,6 +94,21 @@ def read_week(
         return service.get_week_summary(week_start_date)
     except SnowflakeServiceError as exc:  # pragma: no cover
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@api_router.get("/summary", response_model=PeriodSummary)
+def read_period_summary(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    lifetime: bool = False,
+    service: SnowflakeService = Depends(get_snowflake_service),
+) -> PeriodSummary:
+    """Return aggregates for a date range or lifetime."""
+    try:
+        return service.get_period_summary(start_date, end_date, lifetime)
+    except SnowflakeServiceError as exc:
+        status_code = exc.status_code or status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @api_router.get("/muscle-load/{week_start_date}", response_model=MuscleLoadResponse)

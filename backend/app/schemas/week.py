@@ -37,4 +37,13 @@ class WeekSummary(BaseModel):
     activities: List[Activity] = Field(default_factory=list)
 
 
+class PeriodSummary(BaseModel):
+    """Aggregated metrics for an arbitrary date range."""
+
+    start_date: date
+    end_date: date
+    label: str | None = None
+    stats: WeekStats
+
+
 

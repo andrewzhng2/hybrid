@@ -14,7 +14,7 @@ from app.config.muscles import color_for_muscle, fatigue_color_for_muscle
 from app.schemas.activity import Activity, ActivityCreate, ActivityUpdate
 from app.schemas.muscle import AthleteProfile, MuscleLoad, MuscleLoadResponse
 from app.schemas.sport import Sport, SportFocus
-from app.schemas.week import SportBreakdown, WeekStats, WeekSummary
+from app.schemas.week import PeriodSummary, SportBreakdown, WeekStats, WeekSummary
 from app.services.errors import SnowflakeServiceError
 from app.services.load_formula import BASELINE_RPE, LoadInputs, muscle_load_score
 
@@ -192,10 +192,8 @@ class SnowflakeService:
             week_id, label = self._get_week(cursor, week_start)  # still keeps weeks table tidy
 
             activities = self._fetch_activities_by_date(cursor, week_start, week_end)
-            stats_dict = self._fetch_week_stats_by_date(cursor, week_start, week_end)
-            sport_breakdown = self._fetch_sport_breakdown_by_date(
-                cursor, week_start, week_end
-            )
+            stats_dict = self._fetch_stats_by_range(cursor, week_start, week_end)
+            sport_breakdown = self._fetch_sport_breakdown_by_range(cursor, week_start, week_end)
 
         return WeekSummary(
             week_start_date=week_start,
@@ -208,6 +206,37 @@ class SnowflakeService:
                 sport_breakdown=sport_breakdown,
             ),
             activities=activities,
+        )
+
+    def get_period_summary(
+        self, start_date: date | None, end_date: date | None, lifetime: bool = False
+    ) -> PeriodSummary:
+        """Fetch aggregate metrics for an arbitrary date range or lifetime."""
+        with self._cursor() as cursor:
+            if lifetime:
+                start_date = self._fetch_earliest_activity_date(cursor)
+                end_date = self._fetch_latest_activity_date(cursor)
+                if start_date is None or end_date is None:
+                    today = date.today()
+                    start_date = today
+                    end_date = today  # no data yet; keep range valid
+            if not start_date or not end_date:
+                raise SnowflakeServiceError("start_date and end_date are required.", status_code=400)
+
+            stats_dict = self._fetch_stats_by_range(cursor, start_date, end_date)
+            sport_breakdown = self._fetch_sport_breakdown_by_range(cursor, start_date, end_date)
+
+        label = f"{start_date} — {end_date}"
+        return PeriodSummary(
+            start_date=start_date,
+            end_date=end_date,
+            label=label,
+            stats=WeekStats(
+                total_duration_minutes=stats_dict["total_duration_minutes"],
+                session_count=stats_dict["session_count"],
+                average_rpe=stats_dict["average_rpe"],
+                sport_breakdown=sport_breakdown,
+            ),
         )
 
     def get_sports(self) -> List[Sport]:
@@ -808,7 +837,33 @@ class SnowflakeService:
             )
         return activities
 
-    def _fetch_week_stats_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> Dict[str, float]:
+    def _fetch_earliest_activity_date(self, cursor: DictCursor) -> date | None:
+        cursor.execute(
+            """
+            select min(session_date) as earliest_date
+            from activity_sessions
+            where user_id = %(user_id)s
+            """,
+            {"user_id": self._default_user_id},
+        )
+        row = cursor.fetchone() or {}
+        normalized = self._normalize_row(row)
+        return normalized.get("earliest_date")
+
+    def _fetch_latest_activity_date(self, cursor: DictCursor) -> date | None:
+        cursor.execute(
+            """
+            select max(session_date) as latest_date
+            from activity_sessions
+            where user_id = %(user_id)s
+            """,
+            {"user_id": self._default_user_id},
+        )
+        row = cursor.fetchone() or {}
+        normalized = self._normalize_row(row)
+        return normalized.get("latest_date")
+
+    def _fetch_stats_by_range(self, cursor: DictCursor, start_date: date, end_date: date) -> Dict[str, float]:
         cursor.execute(
             """
             select
@@ -817,12 +872,12 @@ class SnowflakeService:
                 coalesce(avg(intensity_rpe), 0) as average_rpe
             from activity_sessions
             where user_id = %(user_id)s
-              and session_date between %(week_start)s and %(week_end)s
+              and session_date between %(start_date)s and %(end_date)s
             """,
             {
                 "user_id": self._default_user_id,
-                "week_start": week_start,
-                "week_end": week_end,
+                "start_date": start_date,
+                "end_date": end_date,
             },
         )
         row = cursor.fetchone() or {}
@@ -833,7 +888,9 @@ class SnowflakeService:
             "average_rpe": float(normalized.get("average_rpe", 0) or 0),
         }
 
-    def _fetch_sport_breakdown_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> List[SportBreakdown]:
+    def _fetch_sport_breakdown_by_range(
+        self, cursor: DictCursor, start_date: date, end_date: date
+    ) -> List[SportBreakdown]:
         cursor.execute(
             """
             select
@@ -844,14 +901,14 @@ class SnowflakeService:
             from activity_sessions a
             join sports s on s.sport_id = a.sport_id
             where a.user_id = %(user_id)s
-              and a.session_date between %(week_start)s and %(week_end)s
+              and a.session_date between %(start_date)s and %(end_date)s
             group by s.sport_id, s.name
             order by total_duration_minutes desc
             """,
             {
                 "user_id": self._default_user_id,
-                "week_start": week_start,
-                "week_end": week_end,
+                "start_date": start_date,
+                "end_date": end_date,
             },
         )
         rows = cursor.fetchall() or []

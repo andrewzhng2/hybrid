@@ -42,6 +42,13 @@ export interface WeekSummary {
   activities: Activity[]
 }
 
+export interface PeriodSummary {
+  start_date: string
+  end_date: string
+  label?: string | null
+  stats: WeekStats
+}
+
 export type LoadCategory = 'white' | 'blue' | 'green' | 'yellow' | 'orange' | 'red'
 
 export interface MuscleLoad {

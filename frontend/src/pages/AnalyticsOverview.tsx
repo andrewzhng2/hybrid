@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useOutletContext } from 'react-router-dom'
 
-import { useWeekSummary } from '@/api/hooks'
+import { usePeriodSummary, useWeekSummary } from '@/api/hooks'
 import { Badge, Card, Tabs } from '@/components/ui'
 import type { WeekContextValue } from '@/types/week'
-import { formatDisplayDate } from '@/utils/date'
+import { formatDisplayDate, toIsoDate } from '@/utils/date'
 
 const tabOptions = [
   { id: 'overview', label: 'Overview' },
@@ -15,6 +15,105 @@ const AnalyticsOverview = () => {
   const { weekStart } = useOutletContext<WeekContextValue>()
   const { data, isLoading } = useWeekSummary(weekStart)
   const [activeTab, setActiveTab] = useState(tabOptions[0].id)
+
+  const weekDate = new Date(`${weekStart}T00:00:00Z`)
+  const monthStart = new Date(Date.UTC(weekDate.getUTCFullYear(), weekDate.getUTCMonth(), 1))
+  const monthEnd = new Date(Date.UTC(weekDate.getUTCFullYear(), weekDate.getUTCMonth() + 1, 0))
+  const yearStart = new Date(Date.UTC(weekDate.getUTCFullYear(), 0, 1))
+  const yearEnd = new Date(Date.UTC(weekDate.getUTCFullYear(), 11, 31))
+
+  const { data: monthSummary, isLoading: isLoadingMonth } = usePeriodSummary({
+    start_date: toIsoDate(monthStart),
+    end_date: toIsoDate(monthEnd),
+  })
+  const { data: yearSummary, isLoading: isLoadingYear } = usePeriodSummary({
+    start_date: toIsoDate(yearStart),
+    end_date: toIsoDate(yearEnd),
+  })
+  const { data: lifetimeSummary, isLoading: isLoadingLifetime } = usePeriodSummary({
+    lifetime: true,
+  })
+
+  const formatDuration = (totalMinutes: number) => {
+    const hours = Math.floor(totalMinutes / 60)
+    const minutes = totalMinutes % 60
+    if (hours === 0) {
+      return `${minutes}m`
+    }
+    return `${hours}h ${minutes}m`
+  }
+
+  const hybridGrade = (count: number) => {
+    if (count <= 0) return 'F'
+    if (count === 1) return 'D'
+    if (count === 2) return 'C'
+    if (count === 3) return 'B'
+    if (count === 4) return 'A'
+    if (count === 5) return 'A+'
+    if (count === 6) return 'S'
+    return 'S+'
+  }
+
+  const SportCountCard = ({ count, footnote }: { count: number; footnote: string }) => (
+    <div className="metric-card">
+      <p className="metric-label">Sport Count</p>
+      <p className="metric-value">{count}</p>
+      <p className="metric-footnote" style={{ marginTop: '0.75rem' }}>
+        {footnote}
+      </p>
+    </div>
+  )
+
+  const HybridCard = ({ count }: { count: number }) => (
+    <div className="metric-card">
+      <p className="metric-label">Hybrid Grade</p>
+      <p className="metric-value">{hybridGrade(count)}</p>
+      <p className="metric-footnote" style={{ marginTop: '0.75rem' }}>
+        Your athlete grade based on sport variety.
+      </p>
+    </div>
+  )
+
+  const renderMetrics = (stats: { total_duration_minutes: number; average_rpe: number; sport_breakdown: { length: number } }, footnote: string) => (
+    <div
+      className="analytics-grid"
+      style={{
+        gridTemplateColumns: '2fr 1fr 1fr 1fr',
+      }}
+    >
+      <div className="metric-card" style={{ height: '100%' }}>
+        <p className="metric-label">Time Spent</p>
+        <p className="metric-value">{formatDuration(stats.total_duration_minutes)}</p>
+        <p className="metric-footnote">Accumulates the duration of every activity session.</p>
+      </div>
+      <div className="metric-card">
+        <p className="metric-label">Avg RPE</p>
+        <p className="metric-value">{stats.average_rpe.toFixed(1)}</p>
+        <p className="metric-footnote">Helps spot redline weeks early.</p>
+      </div>
+      <SportCountCard count={stats.sport_breakdown.length} footnote={footnote} />
+      <HybridCard count={stats.sport_breakdown.length} />
+    </div>
+  )
+
+  const renderSummarySection = (
+    title: string,
+    summary?: { stats: { total_duration_minutes: number; average_rpe: number; sport_breakdown: { length: number } } },
+    loading?: boolean,
+  ) => (
+    <Card>
+      <header className="card-header">
+        <div>
+          <p className="eyebrow">{title}</p>
+        </div>
+      </header>
+      {loading || !summary ? (
+        <p style={{ padding: '0 1.5rem 1.5rem' }}>Loading analytics...</p>
+      ) : (
+        renderMetrics(summary.stats, 'Unique sports logged in this period.')
+      )}
+    </Card>
+  )
 
   if (isLoading || !data) {
     return (
@@ -39,23 +138,7 @@ const AnalyticsOverview = () => {
         <Tabs tabs={tabOptions} activeTab={activeTab} onValueChange={setActiveTab} />
 
         {activeTab === 'overview' ? (
-          <div className="analytics-grid">
-            <div className="metric-card">
-              <p className="metric-label">Total minutes</p>
-              <p className="metric-value">{data.stats.total_duration_minutes}</p>
-              <p className="metric-footnote">Accumulates the duration of every activity session.</p>
-            </div>
-            <div className="metric-card">
-              <p className="metric-label">Avg RPE</p>
-              <p className="metric-value">{data.stats.average_rpe.toFixed(1)}</p>
-              <p className="metric-footnote">Helps spot redline weeks early.</p>
-            </div>
-            <div className="metric-card">
-              <p className="metric-label">Sport count</p>
-              <p className="metric-value">{data.stats.sport_breakdown.length}</p>
-              <p className="metric-footnote">Unique sports logged this week.</p>
-            </div>
-          </div>
+          renderMetrics(data.stats, 'Unique sports logged this week.')
         ) : (
           <div className="sport-breakdown">
             {data.stats.sport_breakdown.length === 0 ? (
@@ -73,7 +156,7 @@ const AnalyticsOverview = () => {
                         #{sport.sport_id} · {sport.sport_name}
                       </p>
                       <p className="sport-meta">
-                        {sport.total_duration_minutes} min · {sport.session_count} sessions
+                        {formatDuration(sport.total_duration_minutes)} · {sport.session_count} sessions
                       </p>
                     </div>
                     <div className="progress-bar">
@@ -87,6 +170,18 @@ const AnalyticsOverview = () => {
           </div>
         )}
       </Card>
+
+      {activeTab === 'overview' && (
+        <>
+          {renderSummarySection(
+            `Month of ${monthStart.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' })}`,
+            monthSummary,
+            isLoadingMonth,
+          )}
+          {renderSummarySection(`Year ${yearStart.getUTCFullYear()}`, yearSummary, isLoadingYear)}
+          {renderSummarySection('Lifetime', lifetimeSummary, isLoadingLifetime)}
+        </>
+      )}
     </section>
   )
 }

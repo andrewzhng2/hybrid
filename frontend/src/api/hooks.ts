@@ -11,6 +11,14 @@ export const useWeekSummary = (weekStart: string) =>
     staleTime: 1000 * 60,
   })
 
+export const usePeriodSummary = (params: { start_date?: string; end_date?: string; lifetime?: boolean }) =>
+  useQuery({
+    queryKey: ['summary', params.start_date, params.end_date, params.lifetime],
+    queryFn: () => api.getPeriodSummary(params),
+    enabled: Boolean(params.lifetime || (params.start_date && params.end_date)),
+    staleTime: 1000 * 60,
+  })
+
 export const useMuscleLoad = (weekStart: string) =>
   useQuery({
     queryKey: ['muscle-load', weekStart],
