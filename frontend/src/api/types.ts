@@ -18,6 +18,8 @@ export interface ActivityCreate {
   notes?: string
 }
 
+export type ActivityUpdate = ActivityCreate
+
 export interface SportBreakdown {
   sport_id: number
   sport_name: string
@@ -47,12 +49,21 @@ export interface MuscleLoad {
   muscle_name: string
   load_score: number
   load_category: LoadCategory
+  fatigue_score: number
+  fatigue_category: LoadCategory
+}
+
+export interface AthleteProfile {
+  height_cm?: number | null
+  weight_kg?: number | null
+  date_of_birth?: string | null
 }
 
 export interface MuscleLoadResponse {
   week_start_date: string
   week_end_date: string
   muscles: MuscleLoad[]
+  athlete_profile?: AthleteProfile | null
 }
 
 export interface SportFocus {

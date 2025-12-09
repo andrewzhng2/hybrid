@@ -63,6 +63,35 @@ _TIER_THRESHOLDS: Final[Dict[TierLabel, tuple[TierThreshold, ...]]] = {
 }
 
 
+@dataclass(frozen=True)
+class FatigueThreshold:
+    cutoff: float
+    inclusive: bool
+    color: LoadCategory
+
+
+_FATIGUE_THRESHOLDS: Final[Dict[TierLabel, tuple[FatigueThreshold, ...]]] = {
+    "A": (
+        FatigueThreshold(cutoff=60.0, inclusive=False, color="blue"),
+        FatigueThreshold(cutoff=180.0, inclusive=True, color="green"),
+        FatigueThreshold(cutoff=300.0, inclusive=True, color="yellow"),
+        FatigueThreshold(cutoff=420.0, inclusive=True, color="orange"),
+    ),
+    "B": (
+        FatigueThreshold(cutoff=45.0, inclusive=False, color="blue"),
+        FatigueThreshold(cutoff=135.0, inclusive=True, color="green"),
+        FatigueThreshold(cutoff=225.0, inclusive=True, color="yellow"),
+        FatigueThreshold(cutoff=315.0, inclusive=True, color="orange"),
+    ),
+    "C": (
+        FatigueThreshold(cutoff=30.0, inclusive=False, color="blue"),
+        FatigueThreshold(cutoff=90.0, inclusive=True, color="green"),
+        FatigueThreshold(cutoff=150.0, inclusive=True, color="yellow"),
+        FatigueThreshold(cutoff=210.0, inclusive=True, color="orange"),
+    ),
+}
+
+
 def normalize_muscle_name(name: str) -> str:
     return name.strip().lower()
 
@@ -82,4 +111,19 @@ def color_for_muscle(muscle_name: str, acwr: float) -> LoadCategory:
     return "red"
 
 
-__all__ = ["MUSCLE_TIERS", "color_for_muscle", "LoadCategory", "TierLabel"]
+def fatigue_color_for_muscle(muscle_name: str, fatigue_score: float) -> LoadCategory:
+    """Return fatigue bucket for the provided muscle + raw load reading."""
+
+    if fatigue_score <= 0:
+        return "white"
+
+    tier = MUSCLE_TIERS.get(normalize_muscle_name(muscle_name), _DEFAULT_TIER)
+    for threshold in _FATIGUE_THRESHOLDS[tier]:
+        if threshold.inclusive and fatigue_score <= threshold.cutoff:
+            return threshold.color
+        if not threshold.inclusive and fatigue_score < threshold.cutoff:
+            return threshold.color
+    return "red"
+
+
+__all__ = ["MUSCLE_TIERS", "color_for_muscle", "fatigue_color_for_muscle", "LoadCategory", "TierLabel"]

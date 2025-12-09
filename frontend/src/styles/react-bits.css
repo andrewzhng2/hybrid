@@ -27,6 +27,18 @@ body {
   min-height: 100vh;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+  white-space: nowrap;
+}
+
 #root {
   min-height: 100vh;
 }
@@ -131,6 +143,11 @@ body {
   gap: 1.5rem;
 }
 
+.stats-row.vitals-row {
+  flex-wrap: wrap;
+  margin-bottom: 1.5rem;
+}
+
 .stat-label {
   margin: 0;
   color: var(--rb-muted);
@@ -229,6 +246,14 @@ body {
   padding: 0.8rem;
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--rb-border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.activity-chip--active {
+  border-color: var(--rb-highlight);
+  box-shadow: 0 0 0 1px var(--rb-highlight-soft);
 }
 
 .activity-title {
@@ -246,6 +271,47 @@ body {
 
 .activity-notes {
   font-style: italic;
+}
+
+.activity-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.35rem;
+  margin-top: 0.2rem;
+}
+
+.activity-action {
+  border: none;
+  background: transparent;
+  color: var(--rb-muted);
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.activity-action:hover,
+.activity-action:focus-visible {
+  color: var(--rb-text);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.activity-action--danger {
+  color: var(--rb-danger);
+}
+
+.activity-action--danger:hover,
+.activity-action--danger:focus-visible {
+  color: #fff;
+  background: rgba(255, 71, 126, 0.2);
+}
+
+.activity-action svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .activity-form {
@@ -413,6 +479,23 @@ body {
   text-align: center;
 }
 
+.heatmap-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.heatmap-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.heatmap-section__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
 .heatmap-wrapper {
   border: 1px solid var(--rb-border);
   border-radius: 1.5rem;
@@ -423,7 +506,6 @@ body {
       transparent 55%
     ),
     rgba(255, 255, 255, 0.02);
-  margin-bottom: 1.5rem;
 }
 
 .body-heat-map {

@@ -4,7 +4,7 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.dependencies import get_snowflake_service
-from app.schemas.activity import Activity, ActivityCreate
+from app.schemas.activity import Activity, ActivityCreate, ActivityUpdate
 from app.schemas.muscle import MuscleLoadResponse
 from app.schemas.sport import Sport
 from app.schemas.week import WeekSummary
@@ -47,7 +47,41 @@ def create_activity(
     try:
         return service.create_activity(payload)
     except SnowflakeServiceError as exc:  # pragma: no cover - fastapi handles HTTP
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        status_code = exc.status_code or status.HTTP_400_BAD_REQUEST
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@api_router.put(
+    "/activities/{activity_id}",
+    response_model=Activity,
+)
+def update_activity(
+    activity_id: int,
+    payload: ActivityUpdate,
+    service: SnowflakeService = Depends(get_snowflake_service),
+) -> Activity:
+    """Update an existing activity session."""
+    try:
+        return service.update_activity(activity_id, payload)
+    except SnowflakeServiceError as exc:  # pragma: no cover - fastapi handles HTTP
+        status_code = exc.status_code or status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@api_router.delete(
+    "/activities/{activity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_activity(
+    activity_id: int,
+    service: SnowflakeService = Depends(get_snowflake_service),
+) -> None:
+    """Delete an existing activity session."""
+    try:
+        service.delete_activity(activity_id)
+    except SnowflakeServiceError as exc:  # pragma: no cover - fastapi handles HTTP
+        status_code = exc.status_code or status.HTTP_404_NOT_FOUND
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 @api_router.get("/week/{week_start_date}", response_model=WeekSummary)

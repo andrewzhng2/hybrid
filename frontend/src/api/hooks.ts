@@ -38,5 +38,30 @@ export const useCreateActivity = (weekStart: string) => {
   })
 }
 
+export const useUpdateActivity = (weekStart: string) => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ activityId, payload }: { activityId: number; payload: ActivityCreate }) =>
+      api.updateActivity(activityId, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['week', weekStart] })
+      await queryClient.invalidateQueries({ queryKey: ['muscle-load', weekStart] })
+    },
+  })
+}
+
+export const useDeleteActivity = (weekStart: string) => {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (activityId: number) => api.deleteActivity(activityId),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['week', weekStart] })
+      await queryClient.invalidateQueries({ queryKey: ['muscle-load', weekStart] })
+    },
+  })
+}
+
 
 

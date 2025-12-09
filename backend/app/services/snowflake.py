@@ -5,18 +5,18 @@ import logging
 from collections import OrderedDict
 from contextlib import contextmanager
 from datetime import date, timedelta
-from typing import Callable, Dict, Iterator, List
+from typing import Callable, Dict, Iterator, List, Set, Tuple
 
 from snowflake.connector import DictCursor
 from snowflake.connector.errors import Error as SnowflakeConnectorError
 
-from app.config.muscles import color_for_muscle
-from app.schemas.activity import Activity, ActivityCreate
-from app.schemas.muscle import MuscleLoad, MuscleLoadResponse
+from app.config.muscles import color_for_muscle, fatigue_color_for_muscle
+from app.schemas.activity import Activity, ActivityCreate, ActivityUpdate
+from app.schemas.muscle import AthleteProfile, MuscleLoad, MuscleLoadResponse
 from app.schemas.sport import Sport, SportFocus
 from app.schemas.week import SportBreakdown, WeekStats, WeekSummary
 from app.services.errors import SnowflakeServiceError
-from app.services.load_formula import LoadInputs, muscle_load_score
+from app.services.load_formula import BASELINE_RPE, LoadInputs, muscle_load_score
 
 
 logger = logging.getLogger(__name__)
@@ -116,6 +116,72 @@ class SnowflakeService:
             )
             self._update_muscle_loads_for_activity(cursor, activity)
             return activity
+
+    def update_activity(self, activity_id: int, payload: ActivityUpdate) -> Activity:
+        """Update an existing activity session for the default user."""
+        with self._cursor() as cursor:
+            existing = self._fetch_activity_by_id(cursor, activity_id)
+            if not existing:
+                raise SnowflakeServiceError("Activity not found.", status_code=404)
+
+            new_week_start = self._start_of_week(payload.date)
+            new_week_id, _ = self._upsert_week(cursor, new_week_start)
+            update_sql = """
+                update activity_sessions
+                set
+                    week_id = %(week_id)s,
+                    session_date = %(session_date)s,
+                    sport_id = %(sport_id)s,
+                    category = %(category)s,
+                    duration_minutes = %(duration_minutes)s,
+                    intensity_rpe = %(intensity_rpe)s,
+                    notes = %(notes)s
+                where user_id = %(user_id)s
+                  and activity_id = %(activity_id)s
+            """
+            params = {
+                "user_id": self._default_user_id,
+                "activity_id": activity_id,
+                "week_id": new_week_id,
+                "session_date": payload.date,
+                "sport_id": payload.sport_id,
+                "category": payload.category,
+                "duration_minutes": payload.duration_minutes,
+                "intensity_rpe": payload.intensity_rpe,
+                "notes": payload.notes,
+            }
+            cursor.execute(update_sql, params)
+            if cursor.rowcount == 0:
+                raise SnowflakeServiceError("Activity not found.", status_code=404)
+
+            updated = self._fetch_activity_by_id(cursor, activity_id)
+            if not updated:
+                raise SnowflakeServiceError("Unable to load updated activity session.")
+
+            affected_dates: Set[date] = {existing.date}
+            affected_dates.add(updated.date)
+            self._refresh_daily_loads_for_dates(cursor, affected_dates)
+            return updated
+
+    def delete_activity(self, activity_id: int) -> None:
+        """Delete an existing activity session for the default user."""
+        with self._cursor() as cursor:
+            existing = self._fetch_activity_by_id(cursor, activity_id)
+            if not existing:
+                raise SnowflakeServiceError("Activity not found.", status_code=404)
+
+            cursor.execute(
+                """
+                delete from activity_sessions
+                where user_id = %(user_id)s
+                  and activity_id = %(activity_id)s
+                """,
+                {"user_id": self._default_user_id, "activity_id": activity_id},
+            )
+            if cursor.rowcount == 0:
+                raise SnowflakeServiceError("Activity not found.", status_code=404)
+
+            self._refresh_daily_loads_for_dates(cursor, {existing.date})
 
     def get_week_summary(self, week_start_date: date) -> WeekSummary:
         """Fetch all activities + aggregates for a week."""
@@ -248,6 +314,8 @@ class SnowflakeService:
                 },
             )
             rows = cursor.fetchall() or []
+            athlete_profile = self._fetch_athlete_profile(cursor)
+            fatigue_scores = self._compute_fatigue_scores(cursor, week_start, week_end)
 
         muscles: List[MuscleLoad] = []
         for row in rows:
@@ -257,12 +325,16 @@ class SnowflakeService:
             chronic_average = chronic_total / 4 if chronic_total > 0 else 0.0
             divisor = chronic_average if chronic_average > 0 else max(acute_load, 1.0)
             acwr = acute_load / divisor if divisor > 0 else 0.0
+            muscle_id = int(normalized["muscle_id"])
+            fatigue_score = fatigue_scores.get(muscle_id, 0.0)
             muscles.append(
                 MuscleLoad(
-                    muscle_id=int(normalized["muscle_id"]),
+                    muscle_id=muscle_id,
                     muscle_name=normalized["muscle_name"],
                     load_score=acwr,
                     load_category=color_for_muscle(normalized["muscle_name"], acwr),
+                    fatigue_score=fatigue_score,
+                    fatigue_category=fatigue_color_for_muscle(normalized["muscle_name"], fatigue_score),
                 )
             )
 
@@ -270,6 +342,7 @@ class SnowflakeService:
             week_start_date=week_start,
             week_end_date=week_end,
             muscles=muscles,
+            athlete_profile=athlete_profile,
         )
 
     def rebuild_daily_muscle_loads(self, start_date: date, end_date: date | None = None) -> int:
@@ -581,6 +654,118 @@ class SnowflakeService:
             """,
             {"week_id": week_id, "week_start_date": week_start},
         )
+
+    def _fetch_athlete_profile(self, cursor: DictCursor) -> AthleteProfile | None:
+        """Return the height/weight/DOB for the default user."""
+        cursor.execute(
+            """
+            select height_cm, weight_kg, date_of_birth
+            from users
+            where user_id = %(user_id)s
+            limit 1
+            """,
+            {"user_id": self._default_user_id},
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        normalized = self._normalize_row(row)
+        height_value = normalized.get("height_cm")
+        weight_value = normalized.get("weight_kg")
+        dob_value = normalized.get("date_of_birth")
+        return AthleteProfile(
+            height_cm=float(height_value) if height_value is not None else None,
+            weight_kg=float(weight_value) if weight_value is not None else None,
+            date_of_birth=dob_value,
+        )
+
+    def _fetch_activity_by_id(self, cursor: DictCursor, activity_id: int) -> Activity | None:
+        """Return a single activity row if it exists for the default user."""
+        cursor.execute(
+            """
+            select
+                activity_id,
+                week_id,
+                session_date,
+                sport_id,
+                category,
+                duration_minutes,
+                intensity_rpe,
+                notes
+            from activity_sessions
+            where user_id = %(user_id)s
+              and activity_id = %(activity_id)s
+            limit 1
+            """,
+            {"user_id": self._default_user_id, "activity_id": activity_id},
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+        normalized = self._normalize_row(row)
+        return Activity(
+            activity_id=int(normalized["activity_id"]),
+            week_id=int(normalized["week_id"]),
+            sport_id=int(normalized["sport_id"]),
+            date=normalized["session_date"],
+            category=normalized.get("category"),
+            duration_minutes=int(normalized["duration_minutes"]),
+            intensity_rpe=int(normalized["intensity_rpe"]),
+            notes=normalized.get("notes"),
+        )
+
+    def _refresh_daily_loads_for_dates(self, cursor: DictCursor, dates: Set[date]) -> None:
+        """Recompute daily muscle loads for the provided dates."""
+        if not dates:
+            return
+        for target_date in sorted(dates):
+            cursor.execute(
+                """
+                delete from daily_muscle_loads
+                where user_id = %(user_id)s
+                  and date = %(session_date)s
+                """,
+                {"user_id": self._default_user_id, "session_date": target_date},
+            )
+            activities = self._fetch_activities_by_date(cursor, target_date, target_date)
+            for activity in activities:
+                self._update_muscle_loads_for_activity(cursor, activity)
+
+    def _compute_fatigue_scores(
+        self,
+        cursor: DictCursor,
+        week_start: date,
+        week_end: date,
+    ) -> Dict[int, float]:
+        """Return linear fatigue scores per muscle for the requested window."""
+        activities = self._fetch_activities_by_date(cursor, week_start, week_end)
+        if not activities:
+            return {}
+
+        scores: Dict[int, float] = {}
+        config_cache: Dict[Tuple[int, int | None], List[Dict[str, object]]] = {}
+        baseline = BASELINE_RPE if BASELINE_RPE > 0 else 6.0
+
+        for activity in activities:
+            focus_id = self._resolve_focus_id(cursor, activity.sport_id, activity.category)
+            cache_key = (activity.sport_id, focus_id)
+            configs = config_cache.get(cache_key)
+            if configs is None:
+                configs = self._fetch_muscle_load_configs(cursor, activity.sport_id, focus_id)
+                config_cache[cache_key] = configs
+            if not configs:
+                continue
+
+            intensity_factor = activity.intensity_rpe / baseline
+            for config in configs:
+                base_value = config.get("base_load_per_minute")
+                if base_value is None:
+                    continue
+                fatigue_value = float(activity.duration_minutes) * float(base_value) * intensity_factor
+                muscle_id = int(config["muscle_id"])
+                scores[muscle_id] = scores.get(muscle_id, 0.0) + fatigue_value
+
+        return scores
 
     def _fetch_activities_by_date(self, cursor: DictCursor, week_start: date, week_end: date) -> List[Activity]:
         cursor.execute(

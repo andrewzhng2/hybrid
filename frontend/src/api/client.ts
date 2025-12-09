@@ -28,6 +28,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(payload),
     }),
+  updateActivity: (activityId: number, payload: ActivityCreate) =>
+    request(`/activities/${activityId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+  deleteActivity: (activityId: number) =>
+    request(`/activities/${activityId}`, {
+      method: 'DELETE',
+    }),
 }
 
 

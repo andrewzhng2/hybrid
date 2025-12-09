@@ -20,6 +20,10 @@ class ActivityCreate(ActivityBase):
     """Payload accepted by POST /activities."""
 
 
+class ActivityUpdate(ActivityBase):
+    """Payload accepted by PUT /activities/{activity_id}."""
+
+
 class Activity(ActivityBase):
     """Model returned from activity endpoints."""
 
