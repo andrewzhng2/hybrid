@@ -249,8 +249,8 @@ body {
 
 .day-badge {
   display: inline-block;
-  margin-left: 0.7rem;
-  padding: 0.03rem 0.45rem;
+  margin-left: 0.5rem;
+  padding: 0.03rem 0.20rem;
   border-radius: 999px;
   font-size: 0.68rem;
   letter-spacing: 0.03em;
