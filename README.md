@@ -1,5 +1,6 @@
 # Hybrid
-<img width="1713" height="914" alt="Screenshot 2025-12-02 at 2 14 42 PM" src="https://github.com/user-attachments/assets/4f60cc5b-726f-4d64-b827-d5869a215c6e" />
+<img width="1211" height="724" alt="hybrid1" src="https://github.com/user-attachments/assets/f4ee5d63-a8e5-4ad5-aaba-389514cd4d9b" />
+<img width="1901" height="950" alt="hybrid2" src="https://github.com/user-attachments/assets/13b51011-495f-46b3-8c9c-437150de1af9" />
 
 Hybrid is a personal training dashboard that lets multi-sport athletes log weekly sessions, see which muscles each sport is hitting, and spot imbalances through simple visual analytics. The plan resets every Monday, aggregates the history in Snowflake, and powers three focused views:
 
